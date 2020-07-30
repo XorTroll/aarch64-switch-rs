@@ -1,0 +1,1 @@
+xargo build --release --target aarch64-none-elf

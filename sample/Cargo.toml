@@ -1,0 +1,16 @@
+[package]
+name = "sample"
+version = "0.1.0"
+authors = ["XorTroll"]
+edition = "2018"
+
+[dependencies]
+nx = { path = "../nx" }
+
+[package.metadata.linkle.sample]
+icon = "icon.jpg"
+titleid = "010000000000ABCD"
+
+[package.metadata.linkle.sample.nacp]
+name = "Sample app"
+author = "XorTroll"
