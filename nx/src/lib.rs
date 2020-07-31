@@ -2,6 +2,9 @@
 #![feature(llvm_asm)]
 #![feature(global_asm)]
 #![feature(alloc_error_handler)]
+#![feature(const_fn)]
+#![feature(const_raw_ptr_to_usize_cast)]
+// #![allow(improper_ctypes)]
 #![macro_use]
 
 #[macro_use]
@@ -24,3 +27,8 @@ pub mod hbl;
 pub mod crt0;
 
 pub mod svc;
+
+pub mod ipc;
+
+#[macro_use]
+pub mod service;

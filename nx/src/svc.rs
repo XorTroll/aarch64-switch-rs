@@ -69,6 +69,7 @@ pub type PageInfo = u32;
 pub type Address = *mut u8;
 pub type Size = usize;
 pub type ThreadEntrypointFn = fn(*mut u8);
+pub type Handle = u32;
 
 pub fn set_heap_size(size: Size) -> Result<Address> {
     let mut rc: ResultCode;
@@ -77,12 +78,6 @@ pub fn set_heap_size(size: Size) -> Result<Address> {
         llvm_asm!("svc 0x1" : "={w0}"(rc), "={x1}"(address) : "{x1}"(size) :: "volatile");
     }
     wrap(rc, address)
-}
-
-pub fn exit_process() {
-    unsafe {
-        llvm_asm!("svc 0x7" :::: "volatile");
-    }
 }
 
 pub fn query_memory(out_info: *mut MemoryInfo, address: *const u8) -> Result<PageInfo> {
@@ -94,8 +89,22 @@ pub fn query_memory(out_info: *mut MemoryInfo, address: *const u8) -> Result<Pag
     wrap(rc, info)
 }
 
+pub fn exit_process() {
+    unsafe {
+        llvm_asm!("svc 0x7" :::: "volatile");
+    }
+}
+
+pub fn close_handle(handle: Handle) -> Result<()> {
+    let rc: ResultCode;
+    unsafe {
+        llvm_asm!("svc 0x16" : "={w0}"(rc) : "{w0}"(handle) :: "volatile");
+    }
+    wrap(rc, ())
+}
+
 pub fn arbitrate_lock(thread_handle: u32, address: Address, tag: u32) -> Result<()> {
-    let rc : ResultCode;
+    let rc: ResultCode;
     unsafe {
         llvm_asm!("svc 0x1A" : "={w0}"(rc) : "{w0}"(thread_handle), "{x1}"(address), "{w2}"(tag) :: "volatile");
     }
@@ -103,15 +112,32 @@ pub fn arbitrate_lock(thread_handle: u32, address: Address, tag: u32) -> Result<
 }
 
 pub fn arbitrate_unlock(address: Address) -> Result<()> {
-    let rc : ResultCode;
+    let rc: ResultCode;
     unsafe {
         llvm_asm!("svc 0x1B" : "={w0}"(rc) : "{x0}"(address) :: "volatile");
     }
     wrap(rc, ())
 }
 
+pub fn connect_to_named_port(name: *const u8) -> Result<Handle> {
+    let rc: ResultCode;
+    let handle: Handle;
+    unsafe {
+        llvm_asm!("svc 0x1F" : "={w0}"(rc), "={w1}"(handle) : "{x1}"(name) :: "volatile");
+    }
+    wrap(rc, handle)
+}
+
+pub fn send_sync_request(handle: Handle) -> Result<()> {
+    let rc: ResultCode;
+    unsafe {
+        llvm_asm!("svc 0x21" : "={w0}"(rc) : "{w0}"(handle) :: "volatile");
+    }
+    wrap(rc, ())
+}
+
 pub fn break_(reason: BreakReason, arg: Address, size: Size) -> Result<()> {
-    let rc : ResultCode;
+    let rc: ResultCode;
     unsafe {
         llvm_asm!("svc 0x26" : "={w0}"(rc) : "{x0}"(reason), "{x1}"(arg), "{x2}"(size) :: "volatile");
     }
@@ -119,7 +145,7 @@ pub fn break_(reason: BreakReason, arg: Address, size: Size) -> Result<()> {
 }
 
 pub fn output_debug_string(msg: *const u8, len: Size) -> Result<()> {
-    let rc : ResultCode;
+    let rc: ResultCode;
     unsafe {
         llvm_asm!("svc 0x27" : "={w0}"(rc) : "{x0}"(msg), "{x1}"(len) :: "volatile");
     }

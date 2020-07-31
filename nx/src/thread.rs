@@ -7,8 +7,9 @@ enum_define!(ThreadState(u8) {
 });
 
 use crate::result::*;
-use core::ptr;
+use crate::svc;
 use crate::util;
+use core::ptr;
 
 pub type ThreadName = [u8; 0x20];
 
@@ -19,7 +20,7 @@ pub struct Thread {
     pub state: ThreadState,
     pub owns_stack: bool,
     pub pad: [u8; 2],
-    pub handle: u32,
+    pub handle: svc::Handle,
     pub stack: *mut u8,
     pub stack_size: usize,
     pub entry: *mut u8,
@@ -53,7 +54,7 @@ impl Thread {
         }
     }
 
-    pub fn existing(handle: u32, name: &str, stack: *mut u8, stack_size: usize, owns_stack: bool) -> Result<Self> {
+    pub fn existing(handle: svc::Handle, name: &str, stack: *mut u8, stack_size: usize, owns_stack: bool) -> Result<Self> {
         let mut thread = Self {
             self_ref: ptr::null_mut(),
             state: ThreadState::Started,
@@ -85,7 +86,7 @@ impl Thread {
         util::get_str_from_pointer(self.name_addr, 0x20)
     }
 
-    pub fn get_handle(&self) -> u32 {
+    pub fn get_handle(&self) -> svc::Handle {
         self.handle
     }
 }

@@ -1,4 +1,14 @@
 use linked_list_allocator::LockedHeap;
+use alloc::rc;
+use core::cell;
+
+extern crate alloc;
+
+pub type SharedObject<T> = rc::Rc<cell::RefCell<T>>;
+
+pub fn make_shared<T>(t: T) -> SharedObject<T> {
+    SharedObject::new(cell::RefCell::new(t))
+}
 
 // TODO: switch from the spin crate this crate uses to our lock system
 

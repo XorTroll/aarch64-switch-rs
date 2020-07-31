@@ -101,7 +101,7 @@ pub fn get_str_from_pointer(ptr: *mut u8, ptr_size: usize) -> Result<&'static st
     }
     unsafe {
         match core::str::from_utf8(core::slice::from_raw_parts_mut(ptr, ptr_size)) {
-            Ok(name) => Ok(name),
+            Ok(name) => Ok(name.trim_matches('\0')),
             Err(_) => Err(ResultCode::new(0xBEEF3))
         }
     }
@@ -119,4 +119,45 @@ pub fn copy_str_to_pointer(string: &str, ptr: *mut u8) -> Result<()> {
         ptr::copy(string.as_ptr(), ptr, string.len());
     }
     Ok(())
+}
+
+macro_rules! get_mask_impl {
+    ($start:expr, $end:expr) => {
+        (bit!($end - $start + 1) - 1) << $start
+    };
+}
+
+#[macro_export]
+macro_rules! write_bits {
+    ($start:expr, $end:expr, $value:expr, $data:expr) => {
+        $value = ($value & (!get_mask_impl!($start, $end))) | ($data << $start);
+    };
+}
+
+#[macro_export]
+macro_rules! read_bits {
+    ($start:expr, $end:expr, $value:expr) => {
+        ($value & get_mask_impl!($start, $end)) >> $start
+    };
+}
+
+#[macro_export]
+macro_rules! bit_field_struct {
+    ($ty_name:ident($base_ty:ty) { $( $name:ident: $ty:ty => [$getter:ident, $setter:ident], ($start:literal, $end:literal) ),* }) => {
+        #[derive(Default)]
+        #[repr(C)]
+        pub struct $ty_name {
+            pub value: $base_ty,
+        }
+        impl $ty_name {
+            $(
+            pub fn $getter(&self) -> $ty {
+                read_bits!($start as $base_ty, $end as $base_ty, self.value) as $ty
+            }
+            pub fn $setter(&mut self, data: $ty) {
+                write_bits!($start as $base_ty, $end as $base_ty, self.value, data as $base_ty);
+            }
+            )*
+        }
+    }
 }

@@ -1,16 +1,25 @@
 #![no_std]
 #![no_main]
-#![feature(const_generics)]
 
 #[macro_use]
 extern crate alloc;
 
 use core::panic;
 use nx::svc;
+use nx::result::*;
 use nx::util;
 use nx::thread;
+use nx::crt0;
+use nx::service;
+use nx::service::SessionObject;
+use nx::service::fspsrv;
+use nx::service::fspsrv::IFileSystemProxy;
+use nx::service::fspsrv::IFileSystem;
 
 macro_rules! log_debug_fmt {
+    ($msg:literal) => {
+        svc::output_debug_string($msg.as_ptr(), $msg.len()).unwrap();
+    };
     ($fmt:literal, $( $param:expr ),*) => {
         let log_str = format!($fmt, $( $param ),*);
         svc::output_debug_string(log_str.as_ptr(), log_str.len()).unwrap();
@@ -29,65 +38,33 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
     }
 }
 
-/*
-macro_rules! module_name {
-    ($name:literal) => {
-        pub struct ModuleName {
-            reserved: u32,
-            length: u32,
-            name: [u8; ($name).len()],
-        }
-        
-        #[link_section = ".module_name"]
-        #[used]
-        pub static MODULE_NAME: ModuleName = ModuleName { reserved: 0, length: ($name).len() as u32, name: *$name };
-    };
-}
-
-module_name!(b"Demo");
-*/
-
-macro_rules! set_module_name {
-    ($lit:literal) => {
-        const __INTERNAL_MODULE_LEN: usize = $lit.len();
-        #[link_section = ".module_name"]
-        pub static __MODULE_NAME: ModuleName<__INTERNAL_MODULE_LEN> =
-            ModuleName::new($lit);
-    };
-}
-
-#[repr(packed)]
-#[allow(unused_variables)]
-pub struct ModuleName<const LEN: usize> {
-    pub unk: u32,
-    pub name_length: u32,
-    pub name: [u8; LEN],
-}
-
-impl<const LEN: usize> ModuleName<LEN> {
-    pub const fn new(bytes: &[u8; LEN]) -> Self {
-        Self {
-            unk: 0,
-            name_length: LEN as u32,
-            name: *bytes,
-        }
-    }
-}
-
-set_module_name!(b"test_name\0");
-
 #[no_mangle]
-pub fn main() {
-    log_debug_fmt!("Hello {} from {}!", "world", thread::get_current_thread().get_name().unwrap());
+pub fn main() -> Result<()> {
+    log_debug_fmt!("Hello from Rust and from thread '{}'!", thread::get_current_thread().get_name()?);
+
+    // Not using shared objects here since this is a quick test and the objects are only used inside this function
+    let mut fspsrv = service::new_service_object::<fspsrv::FileSystemProxy>()?;
+    log_debug_fmt!("Accessed fsp-srv service: {:?}", fspsrv.get_session());
+
+    let mut sd_fs = fspsrv.open_sd_card_filesystem::<fspsrv::FileSystem>()?;
+    log_debug_fmt!("Opened SD filesystem: {:?}", sd_fs.get_session());
+
+    let path = "/sample_dir";
+    sd_fs.create_directory(path.as_ptr(), path.len())?;
+    log_debug_fmt!("Directory created");
+    
+    log_debug_fmt!("Test succeeded!");
+    Ok(())
 }
 
 #[panic_handler]
 fn on_panic(info: &panic::PanicInfo) -> ! {
-    let location = info.location().unwrap();
     let thread_name = match thread::get_current_thread().get_name() {
         Ok(name) => name,
         _ => "<unknown>",
     };
-    log_debug_fmt!("Panic! at thread '{}', at '{}' -> {:?}", thread_name, location, info.payload());
-    loop {}
+    log_debug_fmt!("Panic! at thread '{}' -> {}", thread_name, info);
+
+    // TODO: assertion system...?
+    crt0::exit(ResultCode::new(0xBABE))
 }

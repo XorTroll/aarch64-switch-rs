@@ -147,6 +147,15 @@ macro_rules! result_return_unless {
     }
 }
 
+#[macro_export]
+macro_rules! result_try {
+    ($rc:expr) => {
+        if $rc.is_failure() {
+            return Err($rc);
+        }
+    };
+}
+
 result_define!(ResultSuccess => 0);
 
 pub type Result<T> = result::Result<T, ResultCode>;

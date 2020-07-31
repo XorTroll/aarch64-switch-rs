@@ -12,8 +12,8 @@ use crate::result::*;
 use core::option;
 use core::ptr;
 
-extern {
-    fn main();
+extern "Rust" {
+    fn main() -> Result<()>;
     fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize;
 }
 
@@ -22,7 +22,7 @@ pub type ExitFn = fn(ResultCode);
 static mut EXIT_FN: sync::Locked<option::Option<ExitFn>> = sync::Locked::new(false, None);
 static mut MAIN_THREAD: thread::Thread = thread::Thread::new();
 
-unsafe fn initialize_tls_main_thread_impl(thread_handle: u32) {
+unsafe fn initialize_tls_main_thread_impl(thread_handle: svc::Handle) {
     MAIN_THREAD = thread::Thread::existing(thread_handle, "MainThread", ptr::null_mut(), 0, false).unwrap();
     let mut tls = thread::get_thread_local_storage();
     (*tls).thread_ref = &mut MAIN_THREAD;
@@ -40,7 +40,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
     dynamic::relocate(aslr_base_address).unwrap();
 
     let mut heap = util::PointerAndSize::new(ptr::null_mut(), 0);
-    let mut main_thread_handle = raw_main_thread_handle as u32;
+    let mut main_thread_handle = raw_main_thread_handle as svc::Handle;
 
     // If homebrew NRO, parse the config entries hbloader sent us
     if is_hbl_nro {
@@ -55,7 +55,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
                     heap.size = (*abi_entry).value[1] as usize;
                 },
                 hbl::AbiConfigEntryKey::MainThreadHandle => {
-                    main_thread_handle = (*abi_entry).value[0] as u32;
+                    main_thread_handle = (*abi_entry).value[0] as svc::Handle;
                 }
                 _ => {
                     
@@ -81,10 +81,14 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
 
     // TODO: finish implementing CRT0
 
-    main();
+    // Call main() and get its result code
+    let rc = match main() {
+        Ok(()) => ResultCode::from::<ResultSuccess>(),
+        Err(rc) => rc,
+    };
 
     // Exit
-    exit(ResultCode::from::<ResultSuccess>());
+    exit(rc);
 }
 
 #[no_mangle]
@@ -92,24 +96,7 @@ unsafe fn __nx_crt0_exception_entry(_error_desc: u32, _stack_top: *mut u8) {
     svc::return_from_exception(ResultCode::from::<svc::ResultUnhandledException>());
 }
 
-/* TODO
-#[macro_export]
-macro_rules! module_name {
-    ($name:literal) => {
-        pub struct ModuleName {
-            reserved: u32,
-            length: u32,
-            name: [u8; ($name).len()],
-        }
-        
-        #[link_section = ".module_name"]
-        #[used]
-        static MODULE_NAME: ModuleName = ModuleName { reserved: 0, length: ($name).len() as u32, name: *$name };
-    };
-}
-*/
-
-pub fn exit(rc: ResultCode) {
+pub fn exit(rc: ResultCode) -> ! {
     unsafe {
         match EXIT_FN.get() {
             Some(exit_fn) => {
@@ -120,4 +107,5 @@ pub fn exit(rc: ResultCode) {
             }
         }
     }
+    loop {}
 }
