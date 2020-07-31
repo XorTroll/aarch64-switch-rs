@@ -140,24 +140,3 @@ macro_rules! read_bits {
         ($value & get_mask_impl!($start, $end)) >> $start
     };
 }
-
-#[macro_export]
-macro_rules! bit_field_struct {
-    ($ty_name:ident($base_ty:ty) { $( $name:ident: $ty:ty => [$getter:ident, $setter:ident], ($start:literal, $end:literal) ),* }) => {
-        #[derive(Default)]
-        #[repr(C)]
-        pub struct $ty_name {
-            pub value: $base_ty,
-        }
-        impl $ty_name {
-            $(
-            pub fn $getter(&self) -> $ty {
-                read_bits!($start as $base_ty, $end as $base_ty, self.value) as $ty
-            }
-            pub fn $setter(&mut self, data: $ty) {
-                write_bits!($start as $base_ty, $end as $base_ty, self.value, data as $base_ty);
-            }
-            )*
-        }
-    }
-}
