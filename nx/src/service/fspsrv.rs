@@ -1,9 +1,7 @@
-use crate::service::*;
+use crate::result::*;
 use crate::ipc;
-use crate::alloc;
-use crate::session_object_define;
-use crate::ipc::client::*;
-use crate::ipc_client_session_send_request_command;
+use crate::service;
+use crate::service::SessionObject;
 
 pub trait IFileSystem {
     fn create_directory(&mut self, path: *const u8, path_len: usize) -> Result<()>;
@@ -32,12 +30,12 @@ impl IFileSystem for FileSystem {
 
 pub trait IFileSystemProxy {
     fn set_current_process(&mut self) -> Result<()>;
-    fn open_sd_card_filesystem<S: IFileSystem + SessionObject>(&mut self) -> Result<S>;
+    fn open_sd_card_filesystem<S: service::SessionObject>(&mut self) -> Result<S>;
 }
 
 session_object_define!(FileSystemProxy);
 
-impl Service for FileSystemProxy {
+impl service::Service for FileSystemProxy {
     fn get_name() -> &'static str {
         "fsp-srv"
     }
@@ -69,7 +67,7 @@ impl IFileSystemProxy for FileSystemProxy {
         Ok(())
     }
 
-    fn open_sd_card_filesystem<S: IFileSystem + SessionObject>(&mut self) -> Result<S> {
+    fn open_sd_card_filesystem<S: service::SessionObject>(&mut self) -> Result<S> {
         let fs: ipc::Session;
         ipc_client_session_send_request_command!([self.session; 18; false] => {
             In {};

@@ -1,10 +1,12 @@
-enum_define!(ThreadState(u8) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u8)]
+pub enum ThreadState {
     NotInitialized = 0,
     Initialized = 1,
     DestroyedBeforeStarted = 2,
     Started = 3,
     Terminated = 4
-});
+}
 
 use crate::result::*;
 use crate::svc;

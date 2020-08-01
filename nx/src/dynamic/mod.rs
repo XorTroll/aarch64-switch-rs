@@ -10,12 +10,18 @@ pub struct ModuleStart {
     pub magic_offset: u32,
 }
 
+pub const RESULT_SUBMODULE: u32 = 1;
+
+result_lib_define_group!(RESULT_SUBMODULE => {
+    ResultRelaSizeMismatch: 1
+});
+
 pub unsafe fn relocate_with_dyn(base_address: *const u8, dynamic: *const elf::Dyn) -> Result<()> {
     let rela_offset = (*dynamic).find_value(elf::Tag::RelaOffset)?;
     let rela_size = (*dynamic).find_value(elf::Tag::RelaSize)?;
     let rela_entry_size = (*dynamic).find_value(elf::Tag::RelaEntrySize)?;
     let rela_count = (*dynamic).find_value(elf::Tag::RelaCount)?;
-    assert!(rela_size == rela_entry_size * rela_count);
+    result_return_unless!(rela_size == rela_entry_size * rela_count, ResultRelaSizeMismatch);
 
     let rela_base = base_address.offset(rela_offset as isize) as *const elf::Rela;
     for i in 0..rela_count {

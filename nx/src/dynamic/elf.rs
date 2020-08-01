@@ -1,6 +1,15 @@
 use crate::result::*;
 
-enum_define!(Tag(i64) {
+pub const RESULT_SUBMODULE: u32 = 2;
+
+result_lib_define_group!(RESULT_SUBMODULE => {
+    ResultDuplicatedDtEntry: 1,
+    ResultMissingDtEntry: 2
+});
+
+#[derive(Copy, Clone, PartialEq)]
+#[repr(i64)]
+pub enum Tag {
     Invalid = 0,
     Needed = 1,
     PltRelSize = 2,
@@ -21,14 +30,16 @@ enum_define!(Tag(i64) {
     InitArraySize = 27,
     FiniArraySize = 28,
     RelaCount = 0x6FFFFFF9
-});
+}
 
-enum_define!(RelocationType(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum RelocationType {
     AArch64Abs64 = 257,
     AArch64GlobDat = 1025,
     AArch64JumpSlot = 1026,
     AArch64Relative = 1027
-});
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -45,18 +56,12 @@ impl Dyn {
         let mut self_ptr = self as *const Self;
         while (*self_ptr).tag != Tag::Invalid {
             if (*self_ptr).tag == tag {
-                if found.is_null() {
-                    found = &(*self_ptr).val_ptr;
-                }
-                else {
-                    return Err(ResultCode::new(0xDEAD));
-                }
+                result_return_unless!(found.is_null(), ResultDuplicatedDtEntry);
+                found = &(*self_ptr).val_ptr;
             }
             self_ptr = self_ptr.offset(1);
         }
-        if found.is_null() {
-            return Err(ResultCode::new(0xDEAD));
-        }
+        result_return_if!(found.is_null(), ResultMissingDtEntry);
         Ok(*found)
     }
 }

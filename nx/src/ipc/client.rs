@@ -2,6 +2,12 @@ use crate::ipc;
 use crate::result::*;
 use core::mem;
 
+pub const RESULT_SUBMODULE: u32 = 5;
+
+result_lib_define_group!(RESULT_SUBMODULE => {
+    ResultInvalidOutDataHeaderMagic: 1
+});
+
 #[inline(always)]
 pub fn write_command_on_ipc_buffer(ctx: &mut ipc::CommandContext, command_type: ipc::CommandType, data_size: u32) {
     unsafe {
@@ -132,7 +138,7 @@ pub fn read_request_command_response_from_ipc_buffer(ctx: &mut ipc::CommandConte
         }
 
         data_offset = data_offset.offset(mem::size_of::<ipc::DataHeader>() as isize);
-        result_return_unless!((*data_header).magic == ipc::OUT_DATA_HEADER_MAGIC, 0xBEEF);
+        result_return_unless!((*data_header).magic == ipc::OUT_DATA_HEADER_MAGIC, ResultInvalidOutDataHeaderMagic);
         result_try!(ResultCode::new((*data_header).value));
 
         ctx.out_params.data_offset = data_offset;
@@ -140,13 +146,15 @@ pub fn read_request_command_response_from_ipc_buffer(ctx: &mut ipc::CommandConte
     }
 }
 
-enum_define!(ControlRequestId(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum ControlRequestId {
     ConvertCurrentObjectToDomain = 0,
     CopyFromCurrentDomain = 1,
     CloneCurrentObject = 2,
     QueryPointerBufferSize = 3,
     CloneCurrentObjectEx = 4
-});
+}
 
 #[inline(always)]
 pub fn write_control_command_on_ipc_buffer(ctx: &mut ipc::CommandContext, request_id: ControlRequestId) {
@@ -176,7 +184,7 @@ pub fn read_control_command_response_from_ipc_buffer(ctx: &mut ipc::CommandConte
         let data_header = data_offset as *mut ipc::DataHeader;
         
         data_offset = data_offset.offset(mem::size_of::<ipc::DataHeader>() as isize);
-        result_return_unless!((*data_header).magic == ipc::OUT_DATA_HEADER_MAGIC, 0xBEEF);
+        result_return_unless!((*data_header).magic == ipc::OUT_DATA_HEADER_MAGIC, ResultInvalidOutDataHeaderMagic);
         result_try!(ResultCode::new((*data_header).value));
 
         ctx.out_params.data_offset = data_offset;
@@ -187,123 +195,4 @@ pub fn read_control_command_response_from_ipc_buffer(ctx: &mut ipc::CommandConte
 #[inline(always)]
 pub fn write_close_command_on_ipc_buffer(ctx: &mut ipc::CommandContext) {
     write_command_on_ipc_buffer(ctx, ipc::CommandType::Close, 0);
-}
-
-#[macro_export]
-macro_rules! ipc_client_session_send_request_command {
-    ([$session:expr; $rq_id:expr; $send_pid:expr] => { In { $( $in_name:ident: $in_ty:ty = $in_val:expr ),* }; InHandles { $( $in_handle:expr => $in_handle_mode:expr ),* }; InObjects { $( $in_object:expr ),* }; InSessions { $( $in_session:expr ),* }; Buffers { $( ($buf:expr, $buf_size:expr) => $buf_attr:expr ),* }; Out { $( $out_name:ident: $out_ty:ty => $out_val:ident ),* }; OutHandles { $( $out_handle:expr => $out_handle_mode:expr ),* }; OutObjects { $( $out_object:expr ),* }; OutSessions { $( $out_session:expr ),* }; }) => {
-        {
-            #[repr(C)]
-            struct _In {
-                $($in_name: $in_ty),*
-            }
-            let in_data = _In {
-                $($in_name: $in_val),*
-            };
-            let in_ref = &in_data as *const _ as *const u8;
-            let in_size = core::mem::size_of::<_In>();
-
-            let mut ctx = ipc::CommandContext::new($session);
-            ctx.in_params.send_process_id = $send_pid;
-            ctx.in_params.data_size = in_size as u32;
-            $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; ),*
-            $( ctx.in_params.add_handle($in_handle, $in_handle_mode); ),*
-            $( ctx.in_params.add_object($in_object); ),*
-            $( ctx.in_params.add_object($in_session.object_id); ),*
-
-            write_request_command_on_ipc_buffer(&mut ctx, Some($rq_id), ipc::DomainCommandType::SendMessage);
-            
-            if in_size > 0 {
-                unsafe {
-                    core::ptr::copy(in_ref, ctx.in_params.data_offset, in_size);
-                }
-            }
-
-            svc::send_sync_request($session.handle)?;
-
-            #[repr(C)]
-            struct _Out {
-                $($out_name: $out_ty),*
-            }
-            let mut out_data: _Out = unsafe {
-                core::mem::zeroed()
-            };
-            let out_ref = &mut out_data as *mut _ as *mut u8;
-            let out_size = core::mem::size_of::<_Out>();
-
-            ctx.out_params.data_size = out_size as u32;
-
-            read_request_command_response_from_ipc_buffer(&mut ctx)?;
-
-            if out_size > 0 {
-                unsafe {
-                    core::ptr::copy(ctx.out_params.data_offset, out_ref, out_size);
-                }
-            }
-
-            $( $out_val = out_data.$out_name; ),*
-            $( $out_handle = ctx.out_params.pop_handle($out_handle_mode)?; ),*
-            $( $out_object = ctx.out_params.pop_object()?; ),*
-            $( $out_session = ctx.pop_session()?; ),*
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! ipc_client_session_send_control_command {
-    ([$session:expr; $control_rq_id:expr; $send_pid:expr] => { In { $( $in_name:ident: $in_ty:ty = $in_val:expr ),* }; InHandles { $( $in_handle:expr => $in_handle_mode:expr ),* }; InObjects { $( $in_object:expr ),* }; InSessions { $( $in_session:expr ),* }; Buffers { $( ($buf:expr, $buf_size:expr) => $buf_attr:expr ),* }; Out { $( $out_name:ident: $out_ty:ty => $out_val:expr ),* }; OutHandles { $( $out_handle:expr => $out_handle_mode:expr ),* }; OutObjects { $( $out_object:expr ),* }; OutSessions { $( $out_session:expr ),* }; }) => {
-        {
-            #[repr(C)]
-            struct _In {
-                $($in_name: $in_ty),*
-            }
-            let in_data = _In {
-                $($in_name: $in_val),*
-            };
-            let in_ref = &in_data as *const _ as *const u8;
-            let in_size = core::mem::size_of::<_In>();
-
-            let mut ctx = CommandContext::new($session);
-            ctx.in_params.send_process_id = $send_pid;
-            ctx.in_params.data_size = in_size as u32;
-            $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; ),*
-            $( ctx.in_params.add_handle($in_handle, $in_handle_mode); ),*
-            $( ctx.in_params.add_object($in_object); ),*
-            $( ctx.in_params.add_object($in_session.object_id); ),*
-
-            write_control_command_on_ipc_buffer(&mut ctx, $control_rq_id);
-            
-            if in_size > 0 {
-                unsafe {
-                    core::ptr::copy(in_ref, ctx.in_params.data_offset, in_size);
-                }
-            }
-
-            svc::send_sync_request($session.handle)?;
-
-            #[repr(C)]
-            struct _Out {
-                $($out_name: $out_ty),*
-            }
-            let mut out_data: _Out = unsafe {
-                core::mem::zeroed()
-            };
-            let out_ref = &mut out_data as *mut _ as *mut u8;
-            let out_size = core::mem::size_of::<_Out>();
-            ctx.out_params.data_size = out_size as u32;
-
-            read_control_command_response_from_ipc_buffer(&mut ctx)?;
-
-            if out_size > 0 {
-                unsafe {
-                    core::ptr::copy(ctx.out_params.data_offset, out_ref, out_size);
-                }
-            }
-
-            $( $out_val = out_data.$out_name; ),*
-            $( $out_handle = ctx.out_params.pop_handle($out_handle_mode)?; ),*
-            $( $out_object = ctx.out_params.pop_object()?; ),*
-            $( $out_session = ctx.pop_session()?; ),*
-        }
-    };
 }

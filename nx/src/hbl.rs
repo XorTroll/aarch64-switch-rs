@@ -1,4 +1,6 @@
-enum_define!(AbiConfigEntryKey(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum AbiConfigEntryKey {
     EndOfList = 0,
     MainThreadHandle = 1,
     NextLoadPath = 2,
@@ -14,15 +16,19 @@ enum_define!(AbiConfigEntryKey(u32) {
     RandomSeed = 14,
     UserIdStorage = 15,
     HosVersion = 16
-});
+}
 
-enum_define!(AbiConfigEntryFlags(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum AbiConfigEntryFlags {
     Mandatory = bit!(0)
-});
+}
 
-enum_define!(AbiConfigAppletFlags(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum AbiConfigAppletFlags {
     ApplicationOverride = bit!(0)
-});
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]

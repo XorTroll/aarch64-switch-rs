@@ -19,13 +19,13 @@ extern "Rust" {
 
 pub type ExitFn = fn(ResultCode);
 
-static mut EXIT_FN: sync::Locked<option::Option<ExitFn>> = sync::Locked::new(false, None);
-static mut MAIN_THREAD: thread::Thread = thread::Thread::new();
+static mut G_EXIT_FN: sync::Locked<option::Option<ExitFn>> = sync::Locked::new(false, None);
+static mut G_MAIN_THREAD: thread::Thread = thread::Thread::new();
 
 unsafe fn initialize_tls_main_thread_impl(thread_handle: svc::Handle) {
-    MAIN_THREAD = thread::Thread::existing(thread_handle, "MainThread", ptr::null_mut(), 0, false).unwrap();
+    G_MAIN_THREAD = thread::Thread::existing(thread_handle, "MainThread", ptr::null_mut(), 0, false).unwrap();
     let mut tls = thread::get_thread_local_storage();
-    (*tls).thread_ref = &mut MAIN_THREAD;
+    (*tls).thread_ref = &mut G_MAIN_THREAD;
 }
 
 #[no_mangle]
@@ -69,10 +69,10 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
 
     // Set exit function (will be null for non-hbl NROs)
     if is_hbl_nro {
-        EXIT_FN.set(Some(lr_exit_fn));
+        G_EXIT_FN.set(Some(lr_exit_fn));
     }
     else {
-        EXIT_FN.set(None);
+        G_EXIT_FN.set(None);
     }
     
     // Initialize memory allocation
@@ -98,7 +98,7 @@ unsafe fn __nx_crt0_exception_entry(_error_desc: u32, _stack_top: *mut u8) {
 
 pub fn exit(rc: ResultCode) -> ! {
     unsafe {
-        match EXIT_FN.get() {
+        match G_EXIT_FN.get() {
             Some(exit_fn) => {
                 exit_fn(rc);
             },

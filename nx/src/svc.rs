@@ -1,6 +1,9 @@
 use crate::result::*;
+use enumflags2::BitFlags;
 
-enum_define!(BreakReason(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum BreakReason {
     Panic = 0,
     Assert = 1,
     User = 2,
@@ -10,9 +13,11 @@ enum_define!(BreakReason(u32) {
     PostUnloadDll = 6,
     CppException = 7,
     NotificationOnlyFlag = 0x80000000
-});
+}
 
-enum_define!(MemoryState(u32) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum MemoryState {
     Free = 0x0,
     Io = 0x1,
     Static = 0x2,
@@ -35,22 +40,25 @@ enum_define!(MemoryState(u32) {
     Kernel = 0x13,
     GeneratedCode = 0x14,
     CodeOut = 0x15
-});
+}
 
-enum_define!(MemoryPermission(u32) {
-    None = 0,
-    Read = bit!(0),
-    Write = bit!(1),
-    Execute = bit!(2),
-    DontCare = bit!(28)
-});
+#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum MemoryPermission {
+    Read = 0b1,
+    Write = 0b10,
+    Execute = 0b100,
+    DontCare = 0b10000000000000000000000000000,
+}
 
-enum_define!(MemoryAttribute(u32) {
-    Locked = bit!(0),
-    IpcLocked = bit!(1),
-    DeviceShared = bit!(2),
-    Uncached = bit!(3)
-});
+#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[repr(u32)]
+pub enum MemoryAttribute {
+    Locked = 0b1,
+    IpcLocked = 0b10,
+    DeviceShared = 0b100,
+    Uncached = 0b1000,
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -158,10 +166,10 @@ pub fn return_from_exception(rc: ResultCode) {
     }
 }
 
-result_define_group!(1,
-    ResultInvalidSize => 101,
-    ResultInvalidAddress => 102,
-    ResultInvalidHandle => 114,
-    ResultUnhandledException => 124,
-    ResultFatalException => 128
-);
+result_define_group!(1 => {
+    ResultInvalidSize: 101,
+    ResultInvalidAddress: 102,
+    ResultInvalidHandle: 114,
+    ResultUnhandledException: 124,
+    ResultFatalException: 128
+});

@@ -20,7 +20,25 @@ This project started as some testing of making a Nintendo Switch homebrew projec
 
 Many things are not still supported (this is mainly a work-in-progress Rust port of [libbio](https://github.com/biosphere-switch/libbio), a C++ homebrew library)
 
-Currently has very little support (SVCs and some stuff), but it still lacks some essential elements like IPC support.
+> TODO: write a proper TODO :P
+
+## Information
+
+### Results
+
+- Result module: `430` (`2430-****`)
+
+- Result submodules (can be found as consts named `nx::<module_name>::RESULT_SUBMODULE`):
+
+  - Dynamic: `1` (`2430-01**`)
+
+  - ELF-related operations: `2` (`2430-02**`)
+
+  - Util: `3` (`2430-03**`)
+
+  - Common IPC: `4` (`2430-04**`)
+
+  - Client-side IPC: `5` (`2430-05**`)
 
 ## Credits
 

@@ -49,7 +49,7 @@ pub fn main() -> Result<()> {
     let mut sd_fs = fspsrv.open_sd_card_filesystem::<fspsrv::FileSystem>()?;
     log_debug_fmt!("Opened SD filesystem: {:?}", sd_fs.get_session());
 
-    let path = "/sample_dir";
+    let path = "/custom-rust-dir";
     sd_fs.create_directory(path.as_ptr(), path.len())?;
     log_debug_fmt!("Directory created");
     

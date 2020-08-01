@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 linked_list_allocator = "0.8.4"
+enumflags2 = "^0.6"

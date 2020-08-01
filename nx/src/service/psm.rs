@@ -1,9 +1,6 @@
-use crate::service::*;
-use crate::ipc;
-use crate::alloc;
-use crate::session_object_define;
-use crate::ipc::client::*;
-use crate::ipc_client_session_send_request_command;
+use crate::result::*;
+use crate::service;
+use crate::service::SessionObject;
 
 pub trait IPsmServer {
     fn get_battery_charge_percentage(&mut self) -> Result<u32>;
@@ -11,7 +8,7 @@ pub trait IPsmServer {
 
 session_object_define!(PsmServer);
 
-impl Service for PsmServer {
+impl service::Service for PsmServer {
     fn get_name() -> &'static str {
         "psm"
     }

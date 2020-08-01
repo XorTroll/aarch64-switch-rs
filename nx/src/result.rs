@@ -74,89 +74,9 @@ impl core::fmt::Display for ResultCode {
     }
 }
 
-#[macro_export]
-macro_rules! result_define {
-    ($name:ident => $value:expr) => {
-        pub struct $name;
-        
-        impl ResultBase for $name {
-            fn get_value() -> u32 {
-                $value
-            }
-            
-            fn get_module() -> u32 {
-                unpack_module($value)
-            }
-            
-            fn get_description() -> u32 {
-                unpack_description($value)
-            }
-        }
-    };
-    ($name:ident => $module:expr, $description:expr) => {
-        pub struct $name;
-        
-        impl ResultBase for $name {
-            fn get_value() -> u32 {
-                pack_value($module, $description)
-            }
-            
-            fn get_module() -> u32 {
-                $module
-            }
-            
-            fn get_description() -> u32 {
-                $description
-            }
-        }
-    };
-}
+pub const LIBRARY_MODULE: u32 = 430;
 
-#[macro_export]
-macro_rules! result_define_group {
-    ($module:expr, $( $name:ident => $description:expr ),*) => {
-        $( result_define!($name => $module, $description); )*
-    };
-}
-
-#[macro_export]
-macro_rules! result_return_if {
-    ($cond:expr, $res:ty) => {
-        if $cond {
-            return Err(ResultCode::from::<$res>());
-        }
-    };
-    ($cond:expr, $res:literal) => {
-        if $cond {
-            return Err(ResultCode::new($res));
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! result_return_unless {
-    ($cond:expr, $res:ty) => {
-        if !$cond {
-            return Err(ResultCode::from::<$res>());
-        }
-    };
-    ($cond:expr, $res:literal) => {
-        if !$cond {
-            return Err(ResultCode::new($res));
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! result_try {
-    ($rc:expr) => {
-        if $rc.is_failure() {
-            return Err($rc);
-        }
-    };
-}
-
-result_define!(ResultSuccess => 0);
+result_define!(ResultSuccess: 0);
 
 pub type Result<T> = result::Result<T, ResultCode>;
 

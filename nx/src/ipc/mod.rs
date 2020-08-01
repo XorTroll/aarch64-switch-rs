@@ -3,12 +3,16 @@ use crate::result::*;
 use crate::thread;
 use core::ptr;
 use core::fmt;
-
-use crate::ipc::client::*;
-use crate::ipc_client_session_send_control_command;
+use enumflags2::BitFlags;
 
 #[macro_use]
 pub mod client;
+
+pub const RESULT_SUBMODULE: u32 = 4;
+
+result_lib_define_group!(RESULT_SUBMODULE => {
+    ResultNoItemsLeft: 1
+});
 
 #[derive(Copy, Clone)]
 pub struct Session {
@@ -39,7 +43,7 @@ impl Session {
     }
 
     pub fn convert_current_object_to_domain(&mut self) -> Result<()> {
-        ipc_client_session_send_control_command!([*self; ControlRequestId::ConvertCurrentObjectToDomain; false] => {
+        ipc_client_session_send_control_command!([*self; client::ControlRequestId::ConvertCurrentObjectToDomain; false] => {
             In {};
             InHandles {};
             InObjects {};
@@ -57,7 +61,7 @@ impl Session {
 
     pub fn query_pointer_buffer_size(&mut self) -> Result<u16> {
         let pointer_buf_size: u16;
-        ipc_client_session_send_control_command!([*self; ControlRequestId::QueryPointerBufferSize; false] => {
+        ipc_client_session_send_control_command!([*self; client::ControlRequestId::QueryPointerBufferSize; false] => {
             In {};
             InHandles {};
             InObjects {};
@@ -77,12 +81,12 @@ impl Session {
         if self.is_valid() {
             if self.is_domain() {
                 let mut ctx = CommandContext::new(*self);
-                write_request_command_on_ipc_buffer(&mut ctx, None, DomainCommandType::Close);
+                client::write_request_command_on_ipc_buffer(&mut ctx, None, DomainCommandType::Close);
                 let _ = svc::send_sync_request(self.handle);
             }
             else if self.owns_handle {
                 let mut ctx = CommandContext::new(*self);
-                write_close_command_on_ipc_buffer(&mut ctx);
+                client::write_close_command_on_ipc_buffer(&mut ctx);
                 let _ = svc::send_sync_request(self.handle);
             }
             if self.owns_handle {
@@ -99,17 +103,21 @@ impl fmt::Debug for Session {
     }
 }
 
-enum_define!(HandleMode(u8) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u8)]
+pub enum HandleMode {
     Copy = 0,
     Move = 1
-});
+}
 
-enum_define!(BufferFlags(u8) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u8)]
+pub enum BufferFlags {
     Normal = 0,
     NonSecure = 1,
     Invalid = 2,
     NonDevice = 3
-});
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -198,7 +206,9 @@ impl ReceiveStaticDescriptor {
     }
 }
 
-enum_define!(CommandType(u16) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u16)]
+pub enum CommandType {
     Invalid = 0,
     LegacyRequest = 1,
     Close = 2,
@@ -207,7 +217,7 @@ enum_define!(CommandType(u16) {
     Control = 5,
     RequestWithContext = 6,
     ControlWithContext = 7
-});
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -312,11 +322,13 @@ impl DataHeader {
 pub const IN_DATA_HEADER_MAGIC: u32 = 0x49434653;
 pub const OUT_DATA_HEADER_MAGIC: u32 = 0x4F434653;
 
-enum_define!(DomainCommandType(u8) {
+#[derive(Copy, Clone, PartialEq)]
+#[repr(u8)]
+pub enum DomainCommandType {
     Invalid = 0,
     SendMessage = 1,
     Close = 2
-});
+}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -358,16 +370,18 @@ impl DomainOutDataHeader {
     }
 }
 
-enum_define!(BufferAttribute(u8) {
-    In = bit!(0),
-    Out = bit!(1),
-    MapAlias = bit!(2),
-    Pointer = bit!(3),
-    FixedSize = bit!(4),
-    AutoSelect = bit!(5),
-    MapTransferAllowsNonSecure = bit!(6),
-    MapTransferAllowsNonDevice = bit!(7)
-});
+#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[repr(u8)]
+pub enum BufferAttribute {
+    In = 0b1,
+    Out = 0b10,
+    MapAlias = 0b100,
+    Pointer = 0b1000,
+    FixedSize = 0b10000,
+    AutoSelect = 0b100000,
+    MapTransferAllowsNonSecure = 0b1000000,
+    MapTransferAllowsNonDevice = 0b10000000,
+}
 
 const MAX_COUNT: usize = 8;
 
@@ -453,7 +467,7 @@ impl CommandOut {
             self.copy_handle_count -= 1;
             return Ok(self.copy_handles[self.copy_handle_count]);
         }
-        Err(ResultCode::new(0xBABE))
+        Err(ResultCode::from::<ResultNoItemsLeft>())
     }
 
     pub fn pop_move_handle(&mut self) -> Result<svc::Handle> {
@@ -461,7 +475,7 @@ impl CommandOut {
             self.move_handle_count -= 1;
             return Ok(self.move_handles[self.move_handle_count]);
         }
-        Err(ResultCode::new(0xBABE))
+        Err(ResultCode::from::<ResultNoItemsLeft>())
     }
 
     pub fn pop_handle(&mut self, mode: HandleMode) -> Result<svc::Handle> {
@@ -476,7 +490,7 @@ impl CommandOut {
             self.object_count -= 1;
             return Ok(self.objects[self.object_count]);
         }
-        Err(ResultCode::new(0xBABE))
+        Err(ResultCode::from::<ResultNoItemsLeft>())
     }
 }
 
@@ -542,11 +556,11 @@ impl CommandContext {
         }
     }
 
-    pub fn add_buffer(&mut self, buffer: *const u8, buffer_size: usize, buffer_attribute: BufferAttribute) -> Result<()> {
-        let is_in = (buffer_attribute & BufferAttribute::In) as u32 != 0;
-        let is_out = (buffer_attribute & BufferAttribute::Out) as u32 != 0;
+    pub fn add_buffer(&mut self, buffer: *const u8, buffer_size: usize, buffer_attribute: BitFlags<BufferAttribute>) -> Result<()> {
+        let is_in = buffer_attribute.contains(BufferAttribute::In);
+        let is_out = buffer_attribute.contains(BufferAttribute::Out);
 
-        if (buffer_attribute & BufferAttribute::AutoSelect) as u32 != 0 {
+        if buffer_attribute.contains(BufferAttribute::AutoSelect) {
             let pointer_buf_size = self.session.query_pointer_buffer_size()?;
             let buffer_in_static = (pointer_buf_size > 0) && (buffer_size <= pointer_buf_size as usize);
             if is_in {
@@ -570,23 +584,23 @@ impl CommandContext {
                 }
             }
         }
-        else if (buffer_attribute & BufferAttribute::Pointer) as u32 != 0 {
+        else if buffer_attribute.contains(BufferAttribute::Pointer) {
             if is_in {
                 self.add_send_static(SendStaticDescriptor::new(buffer, buffer_size, self.send_static_count as u32));
             }
             else if is_out {
                 self.add_receive_static(ReceiveStaticDescriptor::new(buffer, buffer_size));
-                if (buffer_attribute & BufferAttribute::FixedSize) as u32 == 0 {
+                if !buffer_attribute.contains(BufferAttribute::FixedSize) {
                     self.in_params.add_out_pointer_size(buffer_size as u16);
                 }
             }
         }
-        else if (buffer_attribute & BufferAttribute::MapAlias) as u32 != 0 {
+        else if buffer_attribute.contains(BufferAttribute::MapAlias) {
             let mut flags = BufferFlags::Normal;
-            if (buffer_attribute & BufferAttribute::MapTransferAllowsNonSecure) as u32 != 0 {
+            if buffer_attribute.contains(BufferAttribute::MapTransferAllowsNonSecure) {
                 flags = BufferFlags::NonSecure;
             }
-            else if (buffer_attribute & BufferAttribute::MapTransferAllowsNonDevice) as u32 != 0 {
+            else if buffer_attribute.contains(BufferAttribute::MapTransferAllowsNonDevice){
                 flags = BufferFlags::NonDevice;
             }
             let buf_desc = BufferDescriptor::new(buffer, buffer_size, flags);
