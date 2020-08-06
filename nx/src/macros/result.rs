@@ -77,7 +77,7 @@ macro_rules! result_lib_define_group {
                 }
                 
                 fn get_description() -> u32 {
-                    $submodule + $description
+                    $submodule * 100 + $description
                 }
             }
         )*

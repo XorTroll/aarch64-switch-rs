@@ -30,14 +30,17 @@ impl IFileSystem for FileSystem {
 
 pub trait IFileSystemProxy {
     fn set_current_process(&mut self) -> Result<()>;
+
     fn open_sd_card_filesystem<S: service::SessionObject>(&mut self) -> Result<S>;
+
+    fn output_access_log_to_sd_card(&mut self, buf: *const u8, buf_size: usize) -> Result<()>;
 }
 
 session_object_define!(FileSystemProxy);
 
 impl service::Service for FileSystemProxy {
     fn get_name() -> &'static str {
-        "fsp-srv"
+        nul!("fsp-srv")
     }
 
     fn as_domain() -> bool {
@@ -83,5 +86,22 @@ impl IFileSystemProxy for FileSystemProxy {
             };
         });
         Ok(S::new(fs))
+    }
+
+    fn output_access_log_to_sd_card(&mut self, buf: *const u8, buf_size: usize) -> Result<()> {
+        ipc_client_session_send_request_command!([self.session; 1006; false] => {
+            In {};
+            InHandles {};
+            InObjects {};
+            InSessions {};
+            Buffers {
+                (buf, buf_size) => ipc::BufferAttribute::In | ipc::BufferAttribute::MapAlias
+            };
+            Out {};
+            OutHandles {};
+            OutObjects {};
+            OutSessions {};
+        });
+        Ok(())
     }
 }

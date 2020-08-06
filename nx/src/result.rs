@@ -1,4 +1,5 @@
 use core::result;
+use core::fmt;
 
 const MODULE_BITS: u32 = 9;
 const DESCRIPTION_BITS: u32 = 13;
@@ -23,7 +24,7 @@ pub trait ResultBase {
     fn get_description() -> u32;
 }
 
-#[derive(Default)]
+#[derive(Copy, Clone)]
 pub struct ResultCode {
     value: u32
 }
@@ -62,13 +63,13 @@ impl ResultCode {
     }
 }
 
-impl core::fmt::Debug for ResultCode {
+impl fmt::Debug for ResultCode {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         write!(fmt, "{:#X}", self.value)
     }
 }
 
-impl core::fmt::Display for ResultCode {
+impl fmt::Display for ResultCode {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         write!(fmt, "{:0>4}-{:0>4}", 2000 + self.get_module(), self.get_description())
     }

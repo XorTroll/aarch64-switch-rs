@@ -1,5 +1,5 @@
 use crate::ipc;
-use crate::alloc;
+use crate::mem;
 use crate::svc;
 use crate::result::*;
 
@@ -9,6 +9,16 @@ use crate::service::sm::IUserInterface;
 pub mod psm;
 
 pub mod fspsrv;
+
+pub mod lm;
+
+pub mod vi;
+
+pub mod nv;
+
+pub mod dispdrv;
+
+pub mod fatal;
 
 pub trait SessionObject {
     fn new(session: ipc::Session) -> Self;
@@ -28,7 +38,7 @@ pub trait SessionObject {
 }
 
 pub trait SharedSessionObject {
-    fn shared(session: ipc::Session) -> alloc::SharedObject<Self>;
+    fn shared(session: ipc::Session) -> mem::SharedObject<Self>;
 }
 
 pub trait NamedPort {
@@ -64,9 +74,9 @@ impl SessionObject for ipc::Session {
     }
 }
 
-impl<T: SessionObject> SessionObject for alloc::SharedObject<T> {
+impl<T: SessionObject> SessionObject for mem::SharedObject<T> {
     fn new(session: ipc::Session) -> Self {
-        alloc::make_shared(T::new(session))
+        mem::make_shared(T::new(session))
     }
 
     fn get_session(&self) -> ipc::Session {
@@ -86,24 +96,22 @@ impl<T: SessionObject> SessionObject for alloc::SharedObject<T> {
 }
 
 pub fn new_named_port_object<T: SessionObject + NamedPort>() -> Result<T> {
-    let name = [T::get_name(), "\0"].join("");
-    let handle = svc::connect_to_named_port(name.as_ptr())?;
+    let handle = svc::connect_to_named_port(T::get_name().as_ptr())?;
     let session = ipc::Session::from_handle(handle);
     let mut object = T::new(session);
     object.post_initialize()?;
     Ok(object)
 }
 
-pub fn new_shared_named_port_object<T: SessionObject + SharedSessionObject + NamedPort>() -> Result<alloc::SharedObject<T>> {
+pub fn new_shared_named_port_object<T: SessionObject + SharedSessionObject + NamedPort>() -> Result<mem::SharedObject<T>> {
     let object = new_named_port_object::<T>()?;
-    let shared_object = alloc::make_shared(object);
+    let shared_object = mem::make_shared(object);
     Ok(shared_object)
 }
 
 pub fn new_service_object<T: SessionObject + Service>() -> Result<T> {
-    let name = [T::get_name(), "\0"].join("");
     let mut sm_session = new_named_port_object::<sm::UserInterface>()?;
-    let session = sm_session.get_service(sm::ServiceName::new(&name))?;
+    let session = sm_session.get_service(sm::ServiceName::new(T::get_name()))?;
     let mut object = T::new(session);
     object.post_initialize()?;
     if T::as_domain() {
@@ -112,8 +120,8 @@ pub fn new_service_object<T: SessionObject + Service>() -> Result<T> {
     Ok(object)
 }
 
-pub fn new_shared_service_object<T: SessionObject + SharedSessionObject + Service>() -> Result<alloc::SharedObject<T>> {
+pub fn new_shared_service_object<T: SessionObject + SharedSessionObject + Service>() -> Result<mem::SharedObject<T>> {
     let object = new_service_object::<T>()?;
-    let shared_object = alloc::make_shared(object);
+    let shared_object = mem::make_shared(object);
     Ok(shared_object)
 }

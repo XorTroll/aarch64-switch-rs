@@ -577,10 +577,12 @@ impl CommandContext {
                 if buffer_in_static {
                     self.add_receive_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal));
                     self.add_receive_static(ReceiveStaticDescriptor::new(buffer, buffer_size));
+                    self.in_params.add_out_pointer_size(buffer_size as u16);
                 }
                 else {
                     self.add_receive_buffer(BufferDescriptor::new(buffer, buffer_size, BufferFlags::Normal));
                     self.add_receive_static(ReceiveStaticDescriptor::new(ptr::null(), 0));
+                    self.in_params.add_out_pointer_size(0);
                 }
             }
         }

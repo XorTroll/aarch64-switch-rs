@@ -29,8 +29,8 @@ macro_rules! session_object_define {
         }
 
         impl $crate::service::SharedSessionObject for $name {
-            fn shared(session: $crate::ipc::Session) -> $crate::alloc::SharedObject<Self> {
-                $crate::alloc::make_shared(Self::new(session))
+            fn shared(session: $crate::ipc::Session) -> $crate::mem::SharedObject<Self> {
+                $crate::mem::make_shared(Self::new(session))
             }
         }
         

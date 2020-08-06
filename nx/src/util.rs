@@ -1,3 +1,11 @@
+use crate::result::*;
+use crate::thread;
+use crate::diag::assert;
+use crate::diag::log::Logger;
+use core::str;
+use core::ptr;
+use core::panic;
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct PointerAndSize {
@@ -14,10 +22,6 @@ impl PointerAndSize {
         !self.address.is_null() && (self.size != 0)
     }
 }
-
-use core::str;
-use core::ptr;
-use crate::result::*;
 
 pub const RESULT_SUBMODULE: u32 = 3;
 
@@ -47,4 +51,13 @@ pub fn copy_str_to_pointer(string: &str, ptr: *mut u8) -> Result<()> {
         ptr::copy(string.as_ptr(), ptr, string.len());
     }
     Ok(())
+}
+
+pub fn on_panic_handler<L: Logger>(info: &panic::PanicInfo, assert_mode: assert::AssertMode, rc: ResultCode) -> ! {
+    let thread_name = match thread::get_current_thread().get_name() {
+        Ok(name) => name,
+        _ => "<unknown>",
+    };
+    diag_log!(L { crate::diag::log::LogSeverity::Fatal, true } => "Panic! at thread '{}' -> {}", thread_name, info);
+    assert::assert(assert_mode, rc)
 }

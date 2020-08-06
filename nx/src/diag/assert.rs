@@ -1,9 +1,17 @@
 use crate::result::*;
-use crate::sync;
 use crate::svc;
 use crate::crt0;
+use crate::service;
+use crate::service::fatal;
+use crate::service::fatal::IService;
 use core::ptr;
 use enumflags2::BitFlags;
+
+pub const RESULT_SUBMODULE: u32 = 6;
+
+result_lib_define_group!(RESULT_SUBMODULE => {
+    ResultAssertionFailed: 1
+});
 
 #[derive(BitFlags, Copy, Clone, PartialEq)]
 #[repr(u8)]
@@ -14,31 +22,21 @@ pub enum AssertMode {
     Panic = 0b1000,
 }
 
-static mut G_DEFAULT_ASSERT_MODE: sync::Locked<AssertMode> = sync::Locked::new(false, AssertMode::ProcessExit);
-
-pub fn set_default_assert_mode(mode: AssertMode) {
-    unsafe {
-        G_DEFAULT_ASSERT_MODE.set(mode);
-    }
-}
-
-pub fn get_default_assert_mode() -> AssertMode {
-    unsafe {
-        *G_DEFAULT_ASSERT_MODE.get()
-    }
-}
-
-pub fn assert(mode: AssertMode, rc: ResultCode) {
+pub fn assert(mode: AssertMode, rc: ResultCode) -> ! {
     if rc.is_failure() {
         match mode {
             AssertMode::ProcessExit => {
                 crt0::exit(rc);
             },
             AssertMode::FatalThrow => {
-                todo!();
+                match service::new_service_object::<fatal::Service>() {
+                    Ok(mut fatal) => {
+                        let _ = fatal.throw_with_policy(rc, fatal::Policy::ErrorScreen);
+                    },
+                    _ => {}
+                }
             },
             AssertMode::SvcBreak => {
-                // TODO: handle result...?
                 let _ = svc::break_(svc::BreakReason::Assert, ptr::null_mut(), 0);
             },
             AssertMode::Panic => {
@@ -47,8 +45,5 @@ pub fn assert(mode: AssertMode, rc: ResultCode) {
             },
         }
     }
-}
-
-pub fn assert_default(rc: ResultCode) {
-    assert(get_default_assert_mode(), rc);
+    loop {}
 }

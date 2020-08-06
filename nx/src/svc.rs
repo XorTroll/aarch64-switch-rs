@@ -79,6 +79,9 @@ pub type Size = usize;
 pub type ThreadEntrypointFn = fn(*mut u8);
 pub type Handle = u32;
 
+pub const CURRENT_THREAD_PSEUDO_HANDLE: Handle = 0xFFFF8000;
+pub const CURRENT_PROCESS_PSEUDO_HANDLE: Handle = 0xFFFF8001;
+
 pub fn set_heap_size(size: Size) -> Result<Address> {
     let mut rc: ResultCode;
     let address: *mut u8;
@@ -86,6 +89,14 @@ pub fn set_heap_size(size: Size) -> Result<Address> {
         llvm_asm!("svc 0x1" : "={w0}"(rc), "={x1}"(address) : "{x1}"(size) :: "volatile");
     }
     wrap(rc, address)
+}
+
+pub fn set_memory_attribute(address: Address, size: Size, mask: u32, value: BitFlags<MemoryAttribute>) -> Result<()> {
+    let mut rc: ResultCode;
+    unsafe {
+        llvm_asm!("svc 0x3" : "={w0}"(rc) : "{x0}"(address), "{x1}"(size), "{w2}"(mask), "{w3}"(value) :: "volatile");
+    }
+    wrap(rc, ())
 }
 
 pub fn query_memory(out_info: *mut MemoryInfo, address: *const u8) -> Result<PageInfo> {
@@ -101,6 +112,15 @@ pub fn exit_process() {
     unsafe {
         llvm_asm!("svc 0x7" :::: "volatile");
     }
+}
+
+pub fn create_transfer_memory(address: Address, size: Size, permissions: BitFlags<MemoryPermission>) -> Result<Handle> {
+    let rc: ResultCode;
+    let handle: Handle;
+    unsafe {
+        llvm_asm!("svc 0x15" : "={w0}"(rc), "={w1}"(handle) : "{x1}"(address), "{x2}"(size), "{w3}"(permissions) :: "volatile");
+    }
+    wrap(rc, handle)
 }
 
 pub fn close_handle(handle: Handle) -> Result<()> {
@@ -142,6 +162,15 @@ pub fn send_sync_request(handle: Handle) -> Result<()> {
         llvm_asm!("svc 0x21" : "={w0}"(rc) : "{w0}"(handle) :: "volatile");
     }
     wrap(rc, ())
+}
+
+pub fn get_process_id(process_handle: Handle) -> Result<u64> {
+    let rc: ResultCode;
+    let process_id: u64;
+    unsafe {
+        llvm_asm!("svc 0x24" : "={w0}"(rc), "={x1}"(process_id) : "{w1}"(process_handle) :: "volatile");
+    }
+    wrap(rc, process_id)
 }
 
 pub fn break_(reason: BreakReason, arg: Address, size: Size) -> Result<()> {

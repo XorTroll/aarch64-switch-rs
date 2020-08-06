@@ -10,7 +10,7 @@ session_object_define!(PsmServer);
 
 impl service::Service for PsmServer {
     fn get_name() -> &'static str {
-        "psm"
+        nul!("psm")
     }
 
     fn as_domain() -> bool {

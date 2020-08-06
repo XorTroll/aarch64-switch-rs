@@ -1,8 +1,8 @@
+extern crate alloc;
+
 use linked_list_allocator::LockedHeap;
 use alloc::rc;
 use core::cell;
-
-extern crate alloc;
 
 pub type SharedObject<T> = rc::Rc<cell::RefCell<T>>;
 

@@ -40,6 +40,14 @@ Many things are not still supported (this is mainly a work-in-progress Rust port
 
   - Client-side IPC: `5` (`2430-05**`)
 
+  - Assert: `6` (`2430-06**`)
+
+  - NV error codes: `7` (`2430-07**`)
+
+  - GPU (binder): `8` (`2430-08**`)
+
+  - GPU (parcel): `9` (`2430-09**`)
+
 ## Credits
 
 - Other main homebrew libraries (libnx and libtransistor) since libbio (the C++ base of this project's library) was made thanks to all the work made on these two libraries.

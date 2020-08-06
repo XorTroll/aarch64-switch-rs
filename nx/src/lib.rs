@@ -7,13 +7,16 @@
 #![macro_use]
 
 #[macro_use]
+extern crate alloc;
+
+#[macro_use]
 pub mod macros;
 
 pub mod result;
 
 pub mod util;
 
-pub mod alloc;
+pub mod mem;
 
 pub mod dynamic;
 
@@ -32,3 +35,5 @@ pub mod ipc;
 pub mod service;
 
 pub mod diag;
+
+pub mod gpu;

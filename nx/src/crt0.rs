@@ -1,7 +1,7 @@
 global_asm!(include_str!("crt0.s"));
 
 use crate::svc;
-use crate::alloc;
+use crate::mem;
 use crate::dynamic;
 use crate::sync;
 use crate::util;
@@ -77,7 +77,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
     
     // Initialize memory allocation
     heap = initialize_heap(heap);
-    alloc::initialize(heap.address, heap.size);
+    mem::initialize(heap.address, heap.size);
 
     // TODO: finish implementing CRT0
 

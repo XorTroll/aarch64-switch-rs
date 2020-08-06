@@ -2,29 +2,30 @@
 #![no_main]
 
 #[macro_use]
+extern crate nx;
+
+#[macro_use]
 extern crate alloc;
 
-use core::panic;
 use nx::svc;
 use nx::result::*;
 use nx::util;
-use nx::thread;
-use nx::crt0;
+use nx::diag::assert;
+use nx::diag::log;
+use nx::diag::log::Logger;
+/*
 use nx::service;
-use nx::service::SessionObject;
 use nx::service::fspsrv;
 use nx::service::fspsrv::IFileSystemProxy;
 use nx::service::fspsrv::IFileSystem;
+*/
+use nx::service::vi;
+use nx::service::nv;
+use nx::gpu;
 
-macro_rules! log_debug_fmt {
-    ($msg:literal) => {
-        svc::output_debug_string($msg.as_ptr(), $msg.len()).unwrap();
-    };
-    ($fmt:literal, $( $param:expr ),*) => {
-        let log_str = format!($fmt, $( $param ),*);
-        svc::output_debug_string(log_str.as_ptr(), log_str.len()).unwrap();
-    };
-}
+use core::panic;
+
+mod surface_buffer;
 
 #[no_mangle]
 pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
@@ -32,39 +33,56 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
         hbl_heap
     }
     else {
-        let heap_size: usize = 0x1000000;
+        let heap_size: usize = 0x10000000;
         let heap_address = svc::set_heap_size(heap_size).unwrap();
         util::PointerAndSize::new(heap_address, heap_size)
     }
 }
 
+pub fn gpu_test() -> Result<()> {
+    let mut gpu_ctx: gpu::GpuContext<vi::SystemRootService, nv::AppletNvDrvService> = gpu::GpuContext::new(0x800000)?;
+
+    let width: u32 = 1280;
+    let height: u32 = 720;
+    let color_fmt = gpu::ColorFormat::A8B8G8R8;
+    let mut surface = gpu_ctx.create_stray_layer_surface("Default", width, height, 2, color_fmt, gpu::PixelFormat::RGBA_8888, gpu::Layout::BlockLinear)?;
+
+    let mut x_pos: i32 = 0;
+    let y_pos: i32 = 10;
+    let x_incr: i32 = 5;
+    let sq_length: i32 = 50;
+    loop {
+        let (buf, buf_size, slot, _has_fences, fences) = surface.dequeue_buffer(false)?;
+        let mut surface_buf = surface_buffer::SurfaceBuffer::from(buf, buf_size, width, height, color_fmt);
+
+        let c_white = 0xFFFFFFFF;
+        let c_blue = 0xFF0000FF;
+        surface_buf.clear(c_white);
+        surface_buf.blit_with_color(x_pos, y_pos, sq_length, sq_length, c_blue);
+
+        x_pos += x_incr;
+        if (x_pos + sq_length) as u32 >= width {
+            x_pos = 0;
+        }
+
+        surface.queue_buffer(slot, fences)?;
+    }
+
+    Ok(())
+}
+
 #[no_mangle]
 pub fn main() -> Result<()> {
-    log_debug_fmt!("Hello from Rust and from thread '{}'!", thread::get_current_thread().get_name()?);
+    diag_log!(log::LmLogger { log::LogSeverity::Info, false } => "Hello from {} and {} logging!", "Rust", "lm");
 
-    // Not using shared objects here since this is a quick test and the objects are only used inside this function
-    let mut fspsrv = service::new_service_object::<fspsrv::FileSystemProxy>()?;
-    log_debug_fmt!("Accessed fsp-srv service: {:?}", fspsrv.get_session());
+    if let Err(rc) = gpu_test() {
+        assert::assert(assert::AssertMode::FatalThrow, rc);
+    }
 
-    let mut sd_fs = fspsrv.open_sd_card_filesystem::<fspsrv::FileSystem>()?;
-    log_debug_fmt!("Opened SD filesystem: {:?}", sd_fs.get_session());
-
-    let path = "/custom-rust-dir";
-    sd_fs.create_directory(path.as_ptr(), path.len())?;
-    log_debug_fmt!("Directory created");
-    
-    log_debug_fmt!("Test succeeded!");
     Ok(())
 }
 
 #[panic_handler]
-fn on_panic(info: &panic::PanicInfo) -> ! {
-    let thread_name = match thread::get_current_thread().get_name() {
-        Ok(name) => name,
-        _ => "<unknown>",
-    };
-    log_debug_fmt!("Panic! at thread '{}' -> {}", thread_name, info);
-
-    // TODO: assertion system...?
-    crt0::exit(ResultCode::new(0xBABE))
+fn panic_handler(info: &panic::PanicInfo) -> ! {
+    util::on_panic_handler::<log::LmLogger>(info, assert::AssertMode::FatalThrow, ResultCode::from::<assert::ResultAssertionFailed>())
 }

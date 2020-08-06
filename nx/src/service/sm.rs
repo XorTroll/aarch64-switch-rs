@@ -31,7 +31,7 @@ session_object_define!(UserInterface);
 
 impl service::NamedPort for UserInterface {
     fn get_name() -> &'static str {
-        "sm:"
+        nul!("sm:")
     }
 
     fn post_initialize(&mut self) -> Result<()> {

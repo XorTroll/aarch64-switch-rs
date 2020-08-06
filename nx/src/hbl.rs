@@ -1,3 +1,5 @@
+use enumflags2::BitFlags;
+
 #[derive(Copy, Clone, PartialEq)]
 #[repr(u32)]
 pub enum AbiConfigEntryKey {
@@ -18,22 +20,22 @@ pub enum AbiConfigEntryKey {
     HosVersion = 16
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq)]
 #[repr(u32)]
 pub enum AbiConfigEntryFlags {
-    Mandatory = bit!(0)
+    Mandatory = 0b1,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq)]
 #[repr(u32)]
 pub enum AbiConfigAppletFlags {
-    ApplicationOverride = bit!(0)
+    ApplicationOverride = 0b1,
 }
 
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct AbiConfigEntry {
     pub key: AbiConfigEntryKey,
-    pub flags: AbiConfigEntryFlags,
+    pub flags: BitFlags<AbiConfigEntryFlags>,
     pub value: [u64; 2],
 }

@@ -38,3 +38,10 @@ macro_rules! read_bits {
         ($value & (((1 << ($end - $start + 1)) - 1) << $start)) >> $start
     };
 }
+
+#[macro_export]
+macro_rules! nul {
+    ($lit:expr) => {
+        concat!($lit, "\0")
+    };
+}

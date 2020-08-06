@@ -17,10 +17,10 @@ macro_rules! ipc_client_session_send_request_command {
             let mut ctx = $crate::ipc::CommandContext::new($session);
             ctx.in_params.send_process_id = $send_pid;
             ctx.in_params.data_size = in_size as u32;
-            $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; ),*
-            $( ctx.in_params.add_handle($in_handle, $in_handle_mode); ),*
-            $( ctx.in_params.add_object($in_object); ),*
-            $( ctx.in_params.add_object($in_session.object_id); ),*
+            $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; )*
+            $( ctx.in_params.add_handle($in_handle, $in_handle_mode); )*
+            $( ctx.in_params.add_object($in_object); )*
+            $( ctx.in_params.add_object($in_session.object_id); )*
 
             $crate::ipc::client::write_request_command_on_ipc_buffer(&mut ctx, Some($rq_id), $crate::ipc::DomainCommandType::SendMessage);
             
@@ -29,6 +29,8 @@ macro_rules! ipc_client_session_send_request_command {
                     core::ptr::copy(in_ref, ctx.in_params.data_offset, in_size);
                 }
             }
+
+            // $crate::svc::output_debug_string($crate::ipc::get_ipc_buffer(), (-0x100isize) as usize)?;
 
             $crate::svc::send_sync_request($session.handle)?;
 
@@ -52,10 +54,10 @@ macro_rules! ipc_client_session_send_request_command {
                 }
             }
 
-            $( $out_val = out_data.$out_name; ),*
-            $( $out_handle = ctx.out_params.pop_handle($out_handle_mode)?; ),*
-            $( $out_object = ctx.out_params.pop_object()?; ),*
-            $( $out_session = ctx.pop_session()?; ),*
+            $( $out_val = out_data.$out_name; )*
+            $( $out_handle = ctx.out_params.pop_handle($out_handle_mode)?; )*
+            $( $out_object = ctx.out_params.pop_object()?; )*
+            $( $out_session = ctx.pop_session()?; )*
         }
     };
 }
@@ -77,10 +79,10 @@ macro_rules! ipc_client_session_send_control_command {
             let mut ctx = $crate::ipc::CommandContext::new($session);
             ctx.in_params.send_process_id = $send_pid;
             ctx.in_params.data_size = in_size as u32;
-            $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; ),*
-            $( ctx.in_params.add_handle($in_handle, $in_handle_mode); ),*
-            $( ctx.in_params.add_object($in_object); ),*
-            $( ctx.in_params.add_object($in_session.object_id); ),*
+            $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; )*
+            $( ctx.in_params.add_handle($in_handle, $in_handle_mode); )*
+            $( ctx.in_params.add_object($in_object); )*
+            $( ctx.in_params.add_object($in_session.object_id); )*
 
             $crate::ipc::client::write_control_command_on_ipc_buffer(&mut ctx, $control_rq_id);
             
@@ -111,10 +113,10 @@ macro_rules! ipc_client_session_send_control_command {
                 }
             }
 
-            $( $out_val = out_data.$out_name; ),*
-            $( $out_handle = ctx.out_params.pop_handle($out_handle_mode)?; ),*
-            $( $out_object = ctx.out_params.pop_object()?; ),*
-            $( $out_session = ctx.pop_session()?; ),*
+            $( $out_val = out_data.$out_name; )*
+            $( $out_handle = ctx.out_params.pop_handle($out_handle_mode)?; )*
+            $( $out_object = ctx.out_params.pop_object()?; )*
+            $( $out_session = ctx.pop_session()?; )*
         }
     };
 }
