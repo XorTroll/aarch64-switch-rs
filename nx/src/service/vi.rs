@@ -21,7 +21,7 @@ impl DisplayName {
 #[derive(BitFlags, Copy, Clone, PartialEq)]
 #[repr(u32)]
 pub enum LayerFlags {
-    Default = 0b1
+    Default = 0b1,
 }
 
 pub type DisplayId = u64;

@@ -42,6 +42,6 @@ macro_rules! read_bits {
 #[macro_export]
 macro_rules! nul {
     ($lit:expr) => {
-        concat!($lit, "\0")
+        concat!($lit, "\0\0\0\0\0\0\0\0")
     };
 }

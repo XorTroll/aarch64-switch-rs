@@ -1,5 +1,10 @@
 use nx::gpu;
 
+extern crate alloc;
+use alloc::string::String;
+
+use font8x8::UnicodeFonts;
+
 const X_MASK: u32 = !0x7B4;
 const Y_MASK: u32 = 0x7B4;
 
@@ -82,6 +87,40 @@ impl SurfaceBuffer {
                     y0_offset = (y0_offset - Y_MASK) & Y_MASK;
                     if y0_offset == 0 {
                         x0_offset += y_increment;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn draw_text(&mut self, text: String, scale: i32, color: u32, x: i32, y: i32) {
+        let mut tmp_x = x;
+        let mut tmp_y = y;
+        for c in text.chars() {
+            match c {
+                '\n' | '\r' => {
+                    tmp_y += 8 * scale;
+                    tmp_x = x;
+                },
+                _ => {
+                    if let Some(glyph) = font8x8::BASIC_FONTS.get(c) {
+                        let char_tmp_x = tmp_x;
+                        let char_tmp_y = tmp_y;
+                        for gx in &glyph {
+                            for bit in 0..8 {
+                                match *gx & 1 << bit {
+                                    0 => {},
+                                    _ => {
+                                        self.blit_with_color(tmp_x, tmp_y, scale, scale, color);
+                                    },
+                                }
+                                tmp_x += scale;
+                            }
+                            tmp_y += scale;
+                            tmp_x = char_tmp_x;
+                        }
+                        tmp_x += 8 * scale;
+                        tmp_y = char_tmp_y;
                     }
                 }
             }

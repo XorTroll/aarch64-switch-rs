@@ -120,3 +120,25 @@ impl Ioctl for NvMapGetId {
         IoctlFd::NvMap
     }
 }
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct NvHostCtrlSyncptWait {
+    pub id: u32,
+    pub threshold: u32,
+    pub timeout: i32
+}
+
+impl Ioctl for NvHostCtrlSyncptWait {
+    fn get_id() -> nv::IoctlId {
+        nv::IoctlId::NvHostCtrlSyncptWait
+    }
+
+    fn get_mode() -> BitFlags<IoctlMode> {
+        BitFlags::from(IoctlMode::In)
+    }
+
+    fn get_fd() -> IoctlFd {
+        IoctlFd::NvHostCtrl
+    }
+}

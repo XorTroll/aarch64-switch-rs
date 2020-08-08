@@ -25,6 +25,7 @@ pub trait ResultBase {
 }
 
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub struct ResultCode {
     value: u32
 }

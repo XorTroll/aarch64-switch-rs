@@ -40,7 +40,7 @@ pub struct Surface<NS: nv::INvDrvService> {
 
 impl<NS: nv::INvDrvService> Surface<NS> {
     pub fn new(binder_handle: i32, nvdrv_srv: mem::SharedObject<NS>, application_display_service: mem::SharedObject<vi::ApplicationDisplayService>, nvhost_fd: u32, nvmap_fd: u32, nvhostctrl_fd: u32, hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>, buffer_count: u32, display_id: vi::DisplayId, layer_id: vi::LayerId, width: u32, height: u32, color_fmt: ColorFormat, pixel_fmt: PixelFormat, layout: Layout, layer_destroy_fn: LayerDestroyFn) -> Result<Self> {
-        let mut binder = binder::Binder::new(binder_handle, hos_binder_driver);
+        let mut binder = binder::Binder::new(binder_handle, hos_binder_driver)?;
         binder.increase_refcounts()?;
         let _ = binder.connect(ConnectionApi::Cpu, false)?;
         let mut surface = Self { binder: binder, nvdrv_srv: nvdrv_srv, application_display_service: application_display_service, width: width, height: height, buffer_data: ptr::null_mut(), buffer_alloc_layout: alloc::alloc::Layout::new::<u8>(), single_buffer_size: 0, buffer_count: buffer_count, slot_has_requested: [false; MAX_BUFFERS], graphic_buf: unsafe { cmem::zeroed() }, color_fmt: color_fmt, pixel_fmt: pixel_fmt, layout: layout, display_id: display_id, layer_id: layer_id, layer_destroy_fn: layer_destroy_fn, nvhost_fd: nvhost_fd, nvmap_fd: nvmap_fd, nvhostctrl_fd: nvhostctrl_fd };
@@ -154,10 +154,34 @@ impl<NS: nv::INvDrvService> Surface<NS> {
     }
 
     pub fn dequeue_buffer(&mut self, is_async: bool) -> Result<(*mut u8, usize, i32, bool, MultiFence)> {
+        let slot: i32;
+        let has_fences: bool;
+        let fences: MultiFence;
         if is_async {
-            todo!();
+            self.wait_buffer_event(-1)?;
+            loop {
+                match self.binder.dequeue_buffer(true, self.width, self.height, false, self.graphic_buf.gfx_alloc_usage) {
+                    Ok((_slot, _has_fences, _fences)) => {
+                        slot = _slot;
+                        has_fences = _has_fences;
+                        fences = _fences;
+                        break;
+                    },
+                    Err(rc) => {
+                        if rc.matches::<binder::ResultErrorCodeWouldBlock>() {
+                            continue;
+                        }
+                        return Err(rc);
+                    },
+                };
+            }
         }
-        let (slot, has_fences, fences) = self.binder.dequeue_buffer(is_async, self.width, self.height, false, self.graphic_buf.gfx_alloc_usage)?;
+        else {
+            let (_slot, _has_fences, _fences) = self.binder.dequeue_buffer(false, self.width, self.height, false, self.graphic_buf.gfx_alloc_usage)?;
+            slot = _slot;
+            has_fences = _has_fences;
+            fences = _fences;
+        }
         
         if !self.slot_has_requested[slot as usize] {
             self.binder.request_buffer(slot)?;
@@ -175,6 +199,24 @@ impl<NS: nv::INvDrvService> Surface<NS> {
 
         self.binder.queue_buffer(slot, qbi)?;
         Ok(())
+    }
+
+    pub fn wait_fences(&mut self, fences: MultiFence, timeout: i32) -> Result<()> {
+        for i in 0..fences.fence_count {
+            let mut ioctl_syncptwait: ioctl::NvHostCtrlSyncptWait = unsafe { cmem::zeroed() };
+            ioctl_syncptwait.id = fences.fences[i as usize].id;
+            ioctl_syncptwait.threshold = fences.fences[i as usize].value;
+            ioctl_syncptwait.timeout = timeout;
+
+            self.do_ioctl(&mut ioctl_syncptwait)?;
+        }
+        Ok(())
+    }
+
+    pub fn wait_buffer_event(&mut self, timeout: i64) -> Result<()> {
+        let handle = self.binder.get_buffer_event_handle();
+        svc::wait_synchronization(&handle, 1, timeout)?;
+        svc::reset_signal(handle)
     }
 }
 

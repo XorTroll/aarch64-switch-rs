@@ -393,8 +393,6 @@ impl Logger for LmLogger {
                                 encode_buf = encode_payload(encode_buf, &packet.payload.user_system_clock);
                                 /* encode_buf = */ encode_payload(encode_buf, &packet.payload.process_name);
 
-                                let _ = svc::output_debug_string(log_buf, -(log_buf_size as isize) as usize);
-
                                 match &mut self.logger {
                                     Ok(ref mut logger) => {
                                         let _ = logger.log(log_buf, log_buf_size);

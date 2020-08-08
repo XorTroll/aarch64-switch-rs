@@ -30,8 +30,6 @@ macro_rules! ipc_client_session_send_request_command {
                 }
             }
 
-            // $crate::svc::output_debug_string($crate::ipc::get_ipc_buffer(), (-0x100isize) as usize)?;
-
             $crate::svc::send_sync_request($session.handle)?;
 
             #[repr(C)]

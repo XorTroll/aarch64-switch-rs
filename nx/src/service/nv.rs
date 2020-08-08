@@ -88,7 +88,7 @@ pub enum IoctlId {
     NvMapParam = 0xC00C0109,
     NvMapGetId = 0xC008010E,
 
-    NvHostCtrlWaitAsync = 0xC00C0016,
+    NvHostCtrlSyncptWait = 0xC00C0016,
 } 
 
 pub trait INvDrvService {

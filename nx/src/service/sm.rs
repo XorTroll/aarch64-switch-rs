@@ -3,22 +3,16 @@ use crate::ipc;
 use crate::service;
 use crate::service::SessionObject;
 
-pub union ServiceName {
-    name: [u8; 8],
-    value: u64,
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct ServiceName {
+    pub value: u64,
 }
 
 impl ServiceName {
-    pub fn new(name: &str) -> Self {
-        let bytes = name.as_bytes();
-        // TODO: less hacky version? this can even be contexpr in C++...
-        Self { name: [*bytes.get(0).unwrap_or(&0), *bytes.get(1).unwrap_or(&0), *bytes.get(2).unwrap_or(&0), *bytes.get(3).unwrap_or(&0), *bytes.get(4).unwrap_or(&0), *bytes.get(5).unwrap_or(&0), *bytes.get(6).unwrap_or(&0), *bytes.get(7).unwrap_or(&0)] }
-    }
-
-    pub fn encode(&self) -> u64 {
-        unsafe {
-            self.value
-        }
+    pub const fn new(name: &str) -> Self {
+        let value = unsafe { *(name.as_ptr() as *const u64) };
+        Self { value: value }
     }
 }
 
@@ -61,7 +55,7 @@ impl IUserInterface for UserInterface {
         let session: ipc::Session;
         ipc_client_session_send_request_command!([self.session; 1; false] => {
             In {
-                service_name: u64 = name.encode()
+                service_name: u64 = name.value
             };
             InHandles {};
             InObjects {};

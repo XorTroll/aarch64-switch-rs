@@ -7,6 +7,7 @@ use crate::sync;
 use crate::util;
 use crate::hbl;
 use crate::thread;
+use crate::vmem;
 use crate::result::*;
 
 use core::option;
@@ -38,6 +39,9 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
 
     // Relocate ourselves
     dynamic::relocate(aslr_base_address).unwrap();
+
+    // Initialize virtual memory
+    vmem::initialize().unwrap();
 
     let mut heap = util::PointerAndSize::new(ptr::null_mut(), 0);
     let mut main_thread_handle = raw_main_thread_handle as svc::Handle;
