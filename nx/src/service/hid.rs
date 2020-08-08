@@ -5,7 +5,7 @@ use crate::service;
 use crate::service::SessionObject;
 use crate::svc;
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum NpadStyleTag {
     ProController = 0b1,
@@ -17,7 +17,7 @@ pub enum NpadStyleTag {
     System = 0b1000000000000000000000000000000,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(i64)]
 pub enum NpadJoyDeviceType {
     Left,

@@ -4,7 +4,7 @@ use crate::service;
 use crate::service::SessionObject;
 use enumflags2::BitFlags;
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum LogDestination {
     TMA = 0b1,

@@ -103,14 +103,14 @@ impl fmt::Debug for Session {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum HandleMode {
     Copy = 0,
     Move = 1
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum BufferFlags {
     Normal = 0,
@@ -206,7 +206,7 @@ impl ReceiveStaticDescriptor {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u16)]
 pub enum CommandType {
     Invalid = 0,
@@ -322,7 +322,7 @@ impl DataHeader {
 pub const IN_DATA_HEADER_MAGIC: u32 = 0x49434653;
 pub const OUT_DATA_HEADER_MAGIC: u32 = 0x4F434653;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum DomainCommandType {
     Invalid = 0,
@@ -370,7 +370,7 @@ impl DomainOutDataHeader {
     }
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum BufferAttribute {
     In = 0b1,

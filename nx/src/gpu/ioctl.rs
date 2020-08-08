@@ -2,14 +2,14 @@ use crate::service::nv;
 use super::*;
 use enumflags2::BitFlags;
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum IoctlMode {
     In = 0b1,
     Out = 0b10,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum IoctlFd {
     NvHost,
@@ -67,7 +67,7 @@ impl Ioctl for NvMapFromId {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum AllocFlags {
     ReadOnly,

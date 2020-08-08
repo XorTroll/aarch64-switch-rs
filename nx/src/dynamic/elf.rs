@@ -7,7 +7,7 @@ result_lib_define_group!(RESULT_SUBMODULE => {
     ResultMissingDtEntry: 2
 });
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(i64)]
 pub enum Tag {
     Invalid = 0,
@@ -32,7 +32,7 @@ pub enum Tag {
     RelaCount = 0x6FFFFFF9
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum RelocationType {
     AArch64Abs64 = 257,

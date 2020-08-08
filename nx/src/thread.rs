@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum ThreadState {
     NotInitialized = 0,

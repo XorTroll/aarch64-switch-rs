@@ -18,7 +18,7 @@ impl DisplayName {
     }
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum LayerFlags {
     Default = 0b1,

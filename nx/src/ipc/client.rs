@@ -146,7 +146,7 @@ pub fn read_request_command_response_from_ipc_buffer(ctx: &mut ipc::CommandConte
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum ControlRequestId {
     ConvertCurrentObjectToDomain = 0,

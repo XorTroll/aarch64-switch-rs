@@ -78,7 +78,7 @@ pub fn convert_error_code(err: ErrorCode) -> Result<()> {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum IoctlId {
     NvMapCreate = 0xC0080101,

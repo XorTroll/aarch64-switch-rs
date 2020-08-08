@@ -21,7 +21,7 @@ pub mod ioctl;
 
 pub mod surface;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum Layout {
     Pitch = 1,
@@ -29,7 +29,7 @@ pub enum Layout {
     BlockLinear = 3,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum DisplayScanFormat {
     Progressive = 0,
@@ -37,7 +37,7 @@ pub enum DisplayScanFormat {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum Kind {
     Pitch = 0x0,
@@ -276,7 +276,7 @@ pub enum Kind {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u64)]
 pub enum ColorFormat {
     Unspecified = 0,
@@ -512,7 +512,7 @@ pub enum ColorFormat {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum PixelFormat {
     Invalid = 0,
@@ -533,7 +533,7 @@ pub enum PixelFormat {
     YV12 = 0x32315659,
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum GraphicsAllocatorUsage {
     HardwareTexture = 0x100,
@@ -549,7 +549,7 @@ pub enum GraphicsAllocatorUsage {
     HardwareCameraRead = 0x40000,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(i32)]
 pub enum ConnectionApi {
     EGL = 1,
@@ -558,7 +558,7 @@ pub enum ConnectionApi {
     Camera = 4,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum DisconnectMode {
     Api,
@@ -663,7 +663,7 @@ pub struct Rect {
     bottom: i32
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum Transform {
     FlipH = 1,

@@ -4,14 +4,14 @@ use crate::svc;
 use crate::service;
 use crate::service::SessionObject;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum RefcountType {
     Weak,
     Strong,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum ParcelTransactionId {
     RequestBuffer = 1,

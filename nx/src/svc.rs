@@ -5,7 +5,7 @@ use enumflags2::BitFlags;
 
 global_asm!(include_str!("svc.s"));
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum BreakReason {
     Panic = 0,
@@ -19,7 +19,7 @@ pub enum BreakReason {
     NotificationOnlyFlag = 0x80000000
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum MemoryState {
     Free = 0x0,
@@ -46,7 +46,7 @@ pub enum MemoryState {
     CodeOut = 0x15
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum MemoryPermission {
     Read = 0b1,
@@ -55,7 +55,7 @@ pub enum MemoryPermission {
     DontCare = 0b10000000000000000000000000000,
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum MemoryAttribute {
     Locked = 0b1,
@@ -77,7 +77,7 @@ pub struct MemoryInfo {
     pub pad: u32,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u32)]
 pub enum InfoId {
     CoreMask = 0,

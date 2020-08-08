@@ -13,7 +13,7 @@ result_lib_define_group!(RESULT_SUBMODULE => {
     ResultAssertionFailed: 1
 });
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum AssertMode {
     ProcessExit = 0b1,

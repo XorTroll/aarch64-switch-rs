@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use enumflags2::BitFlags;
 use core::mem;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum LogSeverity {
     Trace,
@@ -112,7 +112,7 @@ use crate::service::lm;
 use crate::service::lm::ILogService;
 use crate::service::lm::ILogger;
 
-#[derive(BitFlags, Copy, Clone, PartialEq)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum LogPacketFlags {
     Head = 0b1,
@@ -132,7 +132,7 @@ pub struct LogPacketHeader {
     pub payload_size: u32,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum LogDataChunkKey {
     LogSessionBegin,
