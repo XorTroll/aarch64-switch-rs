@@ -30,17 +30,11 @@ pub type LayerId = u64;
 
 pub trait IApplicationDisplayService {
     fn get_relay_service<S: SessionObject>(&mut self) -> Result<S>;
-
     fn open_display(&mut self, name: DisplayName) -> Result<DisplayId>;
-
     fn close_display(&mut self, display_id: DisplayId) -> Result<()>;
-
     fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: u64, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize>;
-
     fn create_stray_layer(&mut self, flags: BitFlags<LayerFlags>, display_id: DisplayId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<(LayerId, usize)>;
-
     fn destroy_stray_layer(&mut self, layer_id: LayerId) -> Result<()>;
-
     fn get_display_vsync_event(&mut self, display_id: DisplayId) -> Result<svc::Handle>;
 }
 

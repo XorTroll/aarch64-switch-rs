@@ -109,7 +109,7 @@ pub enum InfoId {
 pub type PageInfo = u32;
 pub type Address = *const u8;
 pub type Size = usize;
-pub type ThreadEntrypointFn = extern fn(*mut u8);
+pub type ThreadEntrypointFn = extern fn(*mut u8) -> !;
 pub type Handle = u32;
 
 pub const CURRENT_THREAD_PSEUDO_HANDLE: Handle = 0xFFFF8000;
@@ -155,13 +155,13 @@ pub fn query_memory(address: *const u8) -> Result<(MemoryInfo, PageInfo)> {
     }
 }
 
-pub fn exit_process() {
+pub fn exit_process() -> ! {
     extern "C" {
-        fn __nx_svc_exit_process();
+        fn __nx_svc_exit_process() -> !;
     }
 
     unsafe {
-        __nx_svc_exit_process();
+        __nx_svc_exit_process()
     }
 }
 
@@ -189,13 +189,13 @@ pub fn start_thread(handle: Handle) -> Result<()> {
     }
 }
 
-pub fn exit_thread() {
+pub fn exit_thread() -> ! {
     extern "C" {
-        fn __nx_svc_exit_thread();
+        fn __nx_svc_exit_thread() -> !;
     }
 
     unsafe {
-        __nx_svc_exit_thread();
+        __nx_svc_exit_thread()
     }
 }
 
@@ -365,6 +365,7 @@ pub fn get_thread_id(process_handle: Handle) -> Result<u64> {
     }
 }
 
+// Note: original name is just break/Break, but that's a reserved keyword :P
 pub fn break_(reason: BreakReason, arg: Address, size: Size) -> Result<()> {
     extern "C" {
         fn __nx_svc_break(reason: BreakReason, arg: Address, size: Size) -> ResultCode;

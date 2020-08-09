@@ -1,4 +1,5 @@
 use crate::result::*;
+use core::ptr;
 
 pub const RESULT_SUBMODULE: u32 = 2;
 
@@ -48,21 +49,23 @@ pub struct Dyn {
     pub val_ptr: u64,
 }
 
-use core::ptr;
-
 impl Dyn {
-    pub unsafe fn find_value(&self, tag: Tag) -> Result<u64> {
-        let mut found: *const u64 = ptr::null();
-        let mut self_ptr = self as *const Self;
-        while (*self_ptr).tag != Tag::Invalid {
-            if (*self_ptr).tag == tag {
-                result_return_unless!(found.is_null(), ResultDuplicatedDtEntry);
-                found = &(*self_ptr).val_ptr;
+    pub fn find_value(&self, tag: Tag) -> Result<u64> {
+        unsafe {
+            let mut found: *const u64 = ptr::null();
+            let mut self_ptr = self as *const Self;
+        
+            while (*self_ptr).tag != Tag::Invalid {
+                if (*self_ptr).tag == tag {
+                    result_return_unless!(found.is_null(), ResultDuplicatedDtEntry);
+                    found = &(*self_ptr).val_ptr;
+                }
+                self_ptr = self_ptr.offset(1);
             }
-            self_ptr = self_ptr.offset(1);
+            result_return_if!(found.is_null(), ResultMissingDtEntry);
+
+            Ok(*found)
         }
-        result_return_if!(found.is_null(), ResultMissingDtEntry);
-        Ok(*found)
     }
 }
 

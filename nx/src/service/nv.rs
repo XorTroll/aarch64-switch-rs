@@ -91,16 +91,15 @@ pub enum IoctlId {
     NvHostCtrlSyncptWait = 0xC00C0016,
 } 
 
+// Note: open_fd and close_fd's original names don't contain the "_fd" bit, but those were changed to avoid the ambiguity with SessionObject::close
 pub trait INvDrvService {
     fn open_fd(&mut self, path: *const u8, path_len: usize) -> Result<(u32, ErrorCode)>;
-
     fn ioctl(&mut self, fd: u32, ioctl_id: IoctlId, in_buf: *const u8, in_buf_size: usize, out_buf: *const u8, out_buf_size: usize) -> Result<ErrorCode>;
-
     fn close_fd(&mut self, fd: u32) -> Result<ErrorCode>;
-
     fn initialize(&mut self, transfer_mem_handle: svc::Handle, transfer_mem_size: u32) -> Result<ErrorCode>;
 }
 
+// NvDrvService is the base trait for all the different services whose only difference is their service names :P
 pub trait NvDrvService {}
 
 impl<T: NvDrvService + SessionObject> INvDrvService for T {

@@ -14,7 +14,6 @@ pub enum LogDestination {
 
 pub trait ILogger {
     fn log(&mut self, buf: *const u8, buf_size: usize) -> Result<()>;
-
     fn set_destination(&mut self, log_destination: BitFlags<LogDestination>) -> Result<()>;
 }
 

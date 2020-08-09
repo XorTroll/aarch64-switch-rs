@@ -78,9 +78,9 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         let aligned_height = align_height(self.height);
         let stride = aligned_width;
         self.single_buffer_size = (aligned_width_bytes * aligned_height) as usize;
-        let usage: BitFlags<GraphicsAllocatorUsage> = GraphicsAllocatorUsage::HardwareComposer | GraphicsAllocatorUsage::HardwareRender | GraphicsAllocatorUsage::HardwareTexture;
+        let usage = GraphicsAllocatorUsage::HardwareComposer | GraphicsAllocatorUsage::HardwareRender | GraphicsAllocatorUsage::HardwareTexture;
         let buf_size = self.buffer_count as usize * self.single_buffer_size;
-        self.buffer_alloc_layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(buf_size, 0x1000) };
+        self.buffer_alloc_layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(buf_size, mem::PAGE_ALIGNMENT) };
 
         let mut ioctl_create: ioctl::NvMapCreate = unsafe { cmem::zeroed() };
         ioctl_create.size = buf_size as u32;
@@ -97,7 +97,7 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         ioctl_alloc.handle = ioctl_create.handle;
         ioctl_alloc.heap_mask = 0;
         ioctl_alloc.flags = ioctl::AllocFlags::ReadOnly;
-        ioctl_alloc.align = 0x1000;
+        ioctl_alloc.align = mem::PAGE_ALIGNMENT as u32;
         ioctl_alloc.kind = Kind::Pitch;
         ioctl_alloc.address = self.buffer_data;
         self.do_ioctl(&mut ioctl_alloc)?;

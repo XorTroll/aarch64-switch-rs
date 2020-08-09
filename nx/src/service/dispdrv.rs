@@ -32,11 +32,8 @@ pub enum ParcelTransactionId {
 
 pub trait IHOSBinderDriver {
     fn transact_parcel(&mut self, binder_handle: i32, transaction_id: ParcelTransactionId, flags: u32, in_parcel_buf: *const u8, in_parcel_size: usize, out_parcel_buf: *const u8, out_parcel_size: usize) -> Result<()>;
-
     fn adjust_refcount(&mut self, binder_handle: i32, add_value: i32, refcount_type: RefcountType) -> Result<()>;
-
     fn get_native_handle(&mut self, binder_handle: i32, unk_type: u32) -> Result<svc::Handle>;
-
     fn transact_parcel_auto(&mut self, binder_handle: i32, transaction_id: ParcelTransactionId, flags: u32, in_parcel_buf: *const u8, in_parcel_size: usize, out_parcel_buf: *const u8, out_parcel_size: usize) -> Result<()>;
 }
 

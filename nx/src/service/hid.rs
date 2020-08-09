@@ -66,17 +66,11 @@ impl IAppletResource for AppletResource {
 
 pub trait IHidServer {
     fn create_applet_resource<S: service::SessionObject>(&mut self, aruid: u64) -> Result<S>;
-
     fn set_supported_npad_style_set(&mut self, aruid: u64, npad_style_tag: BitFlags<NpadStyleTag>) -> Result<()>;
-
     fn set_supported_npad_id_type(&mut self, aruid: u64, controllers: *const u8, controllers_size: usize) -> Result<()>;
-
     fn activate_npad(&mut self, aruid: u64) -> Result<()>;
-
     fn deactivate_npad(&mut self, aruid: u64) -> Result<()>;
-
     fn set_npad_joy_assignment_mode_single(&mut self, aruid: u64, controller: ControllerId, joy_type: NpadJoyDeviceType) -> Result<()>;
-
     fn set_npad_joy_assignment_mode_dual(&mut self, aruid: u64, controller: ControllerId) -> Result<()>;
 }
 

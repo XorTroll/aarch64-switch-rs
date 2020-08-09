@@ -30,9 +30,7 @@ impl IFileSystem for FileSystem {
 
 pub trait IFileSystemProxy {
     fn set_current_process(&mut self) -> Result<()>;
-
     fn open_sd_card_filesystem<S: service::SessionObject>(&mut self) -> Result<S>;
-
     fn output_access_log_to_sd_card(&mut self, buf: *const u8, buf_size: usize) -> Result<()>;
 }
 

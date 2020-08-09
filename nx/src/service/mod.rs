@@ -25,6 +25,9 @@ pub mod hid;
 pub trait SessionObject {
     fn new(session: ipc::Session) -> Self;
     fn get_session(&self) -> ipc::Session;
+    fn convert_current_object_to_domain(&mut self) -> Result<()>;
+    fn query_pointer_buffer_size(&mut self) -> Result<u16>;
+    fn close(&mut self);
 
     fn is_valid(&self) -> bool {
         self.get_session().is_valid()
@@ -33,10 +36,6 @@ pub trait SessionObject {
     fn is_domain(&self) -> bool {
         self.get_session().is_domain()
     }
-
-    fn convert_current_object_to_domain(&mut self) -> Result<()>;
-    fn query_pointer_buffer_size(&mut self) -> Result<u16>;
-    fn close(&mut self);
 }
 
 pub trait SharedSessionObject {

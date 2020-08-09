@@ -3,6 +3,7 @@ extern crate alloc;
 use crate::result::*;
 use crate::svc;
 use crate::util;
+use crate::mem;
 use core::ptr;
 
 pub type ThreadName = [u8; 0x20];
@@ -17,7 +18,7 @@ pub enum ThreadState {
     Terminated = 4
 }
 
-extern fn thread_entry_impl(thread_arg: *mut u8) {
+extern fn thread_entry_impl(thread_arg: *mut u8) -> ! {
     let thread_ref = thread_arg as *mut Thread;
     set_current_thread(thread_ref);
 
@@ -102,7 +103,7 @@ impl Thread {
         let mut owns_stack = false;
         if stack_value.is_null() {
             unsafe {
-                let stack_layout = alloc::alloc::Layout::from_size_align_unchecked(stack_size, 0x1000);
+                let stack_layout = alloc::alloc::Layout::from_size_align_unchecked(stack_size, mem::PAGE_ALIGNMENT);
                 stack_value = alloc::alloc::alloc(stack_layout);
                 owns_stack = true;
             }
@@ -160,10 +161,12 @@ impl Drop for Thread {
     fn drop(&mut self) {
         if self.owns_stack {
             unsafe {
-                let stack_layout = alloc::alloc::Layout::from_size_align_unchecked(self.stack_size, 0x1000);
+                let stack_layout = alloc::alloc::Layout::from_size_align_unchecked(self.stack_size, mem::PAGE_ALIGNMENT);
                 alloc::alloc::dealloc(self.stack, stack_layout);
             }
         }
+
+        // If a thread is not created (like the main thread) the entry field will have nothing (Thread::empty), and we want to avoid closing threads we did not create :P
         if self.entry.is_some() {
             let _ = svc::close_handle(self.handle);
         }

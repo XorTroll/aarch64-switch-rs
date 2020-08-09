@@ -21,7 +21,7 @@ use nx::input;
 
 use core::panic;
 
-mod surface_buffer;
+mod ui2d;
 
 #[no_mangle]
 pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
@@ -52,9 +52,13 @@ pub fn gpu_main() -> Result<()> {
     let mut y_mult: i32 = 4;
     let shape_size: i32 = 50;
 
-    let c_white: u32 = 0xFFFFFFFF;
-    let c_blue: u32 = 0xFFFF0000;
-    let c_black: u32 = 0xFF000000;
+    let c_white = ui2d::RGBA8::new_rgb(0xFF, 0xFF, 0xFF);
+    let c_blue = ui2d::RGBA8::new_rgb(0, 0, 0xFF);
+    let c_black = ui2d::RGBA8::new_rgb(0, 0, 0);
+    let c_royal_blue = ui2d::RGBA8::new_rgb(65, 105, 225);
+
+    let font_data = include_bytes!("../font/Roboto-Medium.ttf");
+    let font = rusttype::Font::try_from_bytes(font_data as &[u8]).unwrap();
 
     loop {
         let mut input_player = match input_ctx.is_controller_connected(hid::ControllerId::Player1) {
@@ -69,11 +73,12 @@ pub fn gpu_main() -> Result<()> {
         }
 
         let (buf, buf_size, slot, has_fences, fences) = surface.dequeue_buffer(true)?;
-        let mut surface_buf = surface_buffer::SurfaceBuffer::from(buf, buf_size, width, height, color_fmt);
+        let mut surface_buf = ui2d::SurfaceBuffer::from(buf, buf_size, width, height, color_fmt);
         
         surface_buf.clear(c_white);
         surface_buf.blit_with_color(x_pos, y_pos, shape_size, shape_size, c_blue);
-        surface_buf.draw_text(format!("Hello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), 2, c_black, 10, 10);
+        surface_buf.draw_font_text(&font, format!("(Drawn with Roboto)\n\nHello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), c_royal_blue, 20.0, 10, 10);
+        surface_buf.draw_bitmap_text(format!("(Drawn with standard bitmap font)\n\nHello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), c_royal_blue, 1, 10, 250);
 
         x_pos += x_incr * x_mult;
         y_pos += y_incr * y_mult;

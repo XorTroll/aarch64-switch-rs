@@ -1,5 +1,3 @@
-global_asm!(include_str!("crt0.s"));
-
 use crate::svc;
 use crate::mem;
 use crate::dynamic;
@@ -9,10 +7,12 @@ use crate::hbl;
 use crate::thread;
 use crate::vmem;
 use crate::result::*;
-
 use core::option;
 use core::ptr;
 
+global_asm!(include_str!("crt0.s"));
+
+// These functions must be implemented by any executable homebrew project using this crate
 extern "Rust" {
     fn main() -> Result<()>;
     fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize;
@@ -22,11 +22,6 @@ pub type ExitFn = fn(ResultCode);
 
 static mut G_EXIT_FN: sync::Locked<option::Option<ExitFn>> = sync::Locked::new(false, None);
 static mut G_MAIN_THREAD: thread::Thread = thread::Thread::empty();
-
-unsafe fn initialize_tls_main_thread_impl(thread_handle: svc::Handle) {
-    G_MAIN_THREAD = thread::Thread::existing(thread_handle, "MainThread", ptr::null_mut(), 0, false, None, ptr::null_mut()).unwrap();
-    thread::set_current_thread(&mut G_MAIN_THREAD);
-}
 
 #[no_mangle]
 unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_handle: u64, aslr_base_address: *const u8, lr_exit_fn: ExitFn, bss_start: *mut u8, bss_end: *mut u8) {
@@ -42,7 +37,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
     let mut heap = util::PointerAndSize::new(ptr::null_mut(), 0);
     let mut main_thread_handle = raw_main_thread_handle as svc::Handle;
 
-    // If homebrew NRO, parse the config entries hbloader sent us
+    // If we are a NRO, parse the config entries hbloader sent us
     if is_hbl_nro {
         let mut abi_entry = abi_ptr;
         loop {
@@ -65,7 +60,9 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
         }
     }
 
-    initialize_tls_main_thread_impl(main_thread_handle);
+    // Initialize the main thread object and initialize its TLS section
+    G_MAIN_THREAD = thread::Thread::existing(main_thread_handle, "MainThread", ptr::null_mut(), 0, false, None, ptr::null_mut()).unwrap();
+    thread::set_current_thread(&mut G_MAIN_THREAD);
 
     // Initialize virtual memory
     vmem::initialize().unwrap();
@@ -78,7 +75,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
         G_EXIT_FN.set(None);
     }
     
-    // Initialize memory allocation
+    // Initialize heap and memory allocation
     heap = initialize_heap(heap);
     mem::initialize(heap.address, heap.size);
 

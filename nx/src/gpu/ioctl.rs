@@ -19,9 +19,7 @@ pub enum IoctlFd {
 
 pub trait Ioctl {
     fn get_id() -> nv::IoctlId;
-
     fn get_mode() -> BitFlags<IoctlMode>;
-
     fn get_fd() -> IoctlFd;
 }
 

@@ -1,4 +1,4 @@
-// NOTE: this is libbio's CRT0, used in this Rust project
+// Note: this is a slightly modified version of libbio's CRT0 (https://github.com/biosphere-switch/libbio)
 
 .section .text.jmp, "x"
 
@@ -35,11 +35,11 @@ __normal_entry:
 	adrp x5, __bss_end
 	add x5, x5, #:lo12:__bss_end
 	
-	// bio::crt0::NormalEntry(context_ptr, main_thread_handle_v, aslr_base_address, lr, bss_start, bss_end)
+	// Call the normal entrypoint (implemented in Rust)
 	b __nx_crt0_entry
 
 __exception_entry:
-	// bio::crt0::ExceptionEntry(error_desc, stack_top)
+	// Call the exception entrypoint (implemented in Rust)
 	b __nx_crt0_exception_entry
 
 // Actual entrypoint called

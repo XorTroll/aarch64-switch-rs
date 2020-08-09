@@ -42,7 +42,6 @@ impl LogMetadata {
 
 pub trait Logger {
     fn new() -> Self;
-
     fn log(&mut self, metadata: &LogMetadata);
 }
 

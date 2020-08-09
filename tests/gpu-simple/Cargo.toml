@@ -11,3 +11,13 @@ path = "../../nx"
 version = "0.2"
 default-features = false
 features = ["unicode"]
+
+[dependencies.rusttype]
+version = "0.9.2"
+default-features = false
+features = ["libm-math"]
+
+[dependencies.libm]
+version = "0.2.1"
+default-features = false
+features = []
