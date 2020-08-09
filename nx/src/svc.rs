@@ -109,7 +109,7 @@ pub enum InfoId {
 pub type PageInfo = u32;
 pub type Address = *const u8;
 pub type Size = usize;
-pub type ThreadEntrypointFn = fn(*mut u8);
+pub type ThreadEntrypointFn = extern fn(*mut u8);
 pub type Handle = u32;
 
 pub const CURRENT_THREAD_PSEUDO_HANDLE: Handle = 0xFFFF8000;
@@ -162,6 +162,64 @@ pub fn exit_process() {
 
     unsafe {
         __nx_svc_exit_process();
+    }
+}
+
+pub fn create_thread(entry: ThreadEntrypointFn, entry_arg: Address, stack_top: Address, priority: i32, cpu_id: i32) -> Result<Handle> {
+    extern "C" {
+        fn __nx_svc_create_thread(handle: *mut Handle, entry: ThreadEntrypointFn, entry_arg: Address, stack_top: Address, priority: i32, cpu_id: i32) -> ResultCode;
+    }
+
+    unsafe {
+        let mut handle: Handle = 0;
+
+        let rc = __nx_svc_create_thread(&mut handle, entry, entry_arg, stack_top, priority, cpu_id);
+        wrap(rc, handle)
+    }
+}
+
+pub fn start_thread(handle: Handle) -> Result<()> {
+    extern "C" {
+        fn __nx_svc_start_thread(handle: Handle) -> ResultCode;
+    }
+
+    unsafe {
+        let rc = __nx_svc_start_thread(handle);
+        wrap(rc, ())
+    }
+}
+
+pub fn exit_thread() {
+    extern "C" {
+        fn __nx_svc_exit_thread();
+    }
+
+    unsafe {
+        __nx_svc_exit_thread();
+    }
+}
+
+pub fn sleep_thread(timeout: i64) -> Result<()> {
+    extern "C" {
+        fn __nx_svc_sleep_thread(timeout: i64) -> ResultCode;
+    }
+
+    unsafe {
+        let rc = __nx_svc_sleep_thread(timeout);
+        wrap(rc, ())
+    }
+}
+
+pub fn get_thread_priority(handle: Handle) -> Result<i32> {
+    extern "C" {
+        fn __nx_svc_get_thread_priority(out_priority: *mut i32, handle: Handle) -> ResultCode;
+    }
+
+    unsafe {
+        let mut priority: i32 = 0;
+
+        let rc = __nx_svc_get_thread_priority(&mut priority, handle);
+        wrap(rc, priority)
     }
 }
 
@@ -291,6 +349,19 @@ pub fn get_process_id(process_handle: Handle) -> Result<u64> {
 
         let rc = __nx_svc_get_process_id(&mut process_id, process_handle);
         wrap(rc, process_id)
+    }
+}
+
+pub fn get_thread_id(process_handle: Handle) -> Result<u64> {
+    extern "C" {
+        fn __nx_svc_get_thread_id(out_thread_id: *mut u64, process_handle: Handle) -> ResultCode;
+    }
+    
+    unsafe {
+        let mut thread_id: u64 = 0;
+
+        let rc = __nx_svc_get_thread_id(&mut thread_id, process_handle);
+        wrap(rc, thread_id)
     }
 }
 

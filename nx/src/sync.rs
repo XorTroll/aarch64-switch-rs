@@ -160,18 +160,18 @@ impl Mutex {
     }
 }
 
-pub struct ScopedLock {
-    lock: &'static mut Mutex,
+pub struct ScopedLock<'a> {
+    lock: &'a mut Mutex,
 }
 
-impl ScopedLock {
-    pub fn new(lock: &'static mut Mutex) -> Self {
+impl<'a> ScopedLock<'a> {
+    pub fn new(lock: &'a mut Mutex) -> Self {
         lock.lock();
         Self { lock: lock }
     }
 }
 
-impl Drop for ScopedLock {
+impl<'a> Drop for ScopedLock<'a> {
     fn drop(&mut self) {
         self.lock.unlock();
     }

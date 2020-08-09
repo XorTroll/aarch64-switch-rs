@@ -37,6 +37,37 @@ DEF_SVC __nx_svc_exit_process
 	ret
 END_DEF_SVC
 
+DEF_SVC __nx_svc_create_thread
+	str x0, [sp, #-16]!
+	svc 0x8
+	ldr x2, [sp], #16
+	str w1, [x2]
+	ret
+END_DEF_SVC
+
+DEF_SVC __nx_svc_start_thread
+	svc 0x9
+	ret
+END_DEF_SVC
+
+DEF_SVC __nx_svc_exit_thread
+	svc 0xA
+	ret
+END_DEF_SVC
+
+DEF_SVC __nx_svc_sleep_thread
+	svc 0xB
+	ret
+END_DEF_SVC
+
+DEF_SVC __nx_svc_get_thread_priority
+	str x0, [sp, #-16]!
+	svc 0xC
+	ldr x2, [sp], #16
+	str w1, [x2]
+	ret
+END_DEF_SVC
+
 DEF_SVC __nx_svc_map_shared_memory
 	svc 0x13
 	ret
@@ -99,6 +130,14 @@ END_DEF_SVC
 DEF_SVC __nx_svc_get_process_id
 	str x0, [sp, #-16]!
 	svc 0x24
+	ldr x2, [sp], #16
+	str x1, [x2]
+	ret
+END_DEF_SVC
+
+DEF_SVC __nx_svc_get_thread_id
+	str x0, [sp, #-16]!
+	svc 0x25
 	ldr x2, [sp], #16
 	str x1, [x2]
 	ret

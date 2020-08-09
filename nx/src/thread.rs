@@ -1,3 +1,12 @@
+extern crate alloc;
+
+use crate::result::*;
+use crate::svc;
+use crate::util;
+use core::ptr;
+
+pub type ThreadName = [u8; 0x20];
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
 pub enum ThreadState {
@@ -8,14 +17,22 @@ pub enum ThreadState {
     Terminated = 4
 }
 
-use crate::result::*;
-use crate::svc;
-use crate::util;
-use core::ptr;
+extern fn thread_entry_impl(thread_arg: *mut u8) {
+    let thread_ref = thread_arg as *mut Thread;
+    set_current_thread(thread_ref);
 
-pub type ThreadName = [u8; 0x20];
+    unsafe {
+        if let Some(entry) = (*thread_ref).entry {
+            let entry_arg = (*thread_ref).entry_arg;
+            (entry)(entry_arg);
+        }
+    }
 
-#[derive(Copy, Clone)]
+    svc::exit_thread();
+}
+
+pub const INVALID_PRIORITY: i32 = -1;
+
 #[repr(C)]
 pub struct Thread {
     pub self_ref: *mut Thread,
@@ -25,7 +42,7 @@ pub struct Thread {
     pub handle: svc::Handle,
     pub stack: *mut u8,
     pub stack_size: usize,
-    pub entry: *mut u8,
+    pub entry: Option<fn(*mut u8)>,
     pub entry_arg: *mut u8,
     pub tls_slots: [*mut u8; 0x20],
     pub reserved: [u8; 0x54],
@@ -36,7 +53,7 @@ pub struct Thread {
 }
 
 impl Thread {
-    pub const fn new() -> Self {
+    pub const fn empty() -> Self {
         Self {
             self_ref: ptr::null_mut(),
             state: ThreadState::NotInitialized,
@@ -45,7 +62,7 @@ impl Thread {
             handle: 0,
             stack: ptr::null_mut(),
             stack_size: 0,
-            entry: ptr::null_mut(),
+            entry: None,
             entry_arg: ptr::null_mut(),
             tls_slots: [ptr::null_mut(); 0x20],
             reserved: [0; 0x54],
@@ -56,7 +73,7 @@ impl Thread {
         }
     }
 
-    pub fn existing(handle: svc::Handle, name: &str, stack: *mut u8, stack_size: usize, owns_stack: bool) -> Result<Self> {
+    pub fn existing(handle: svc::Handle, name: &str, stack: *mut u8, stack_size: usize, owns_stack: bool, entry: Option<fn(*mut u8)>, entry_arg: *mut u8) -> Result<Self> {
         let mut thread = Self {
             self_ref: ptr::null_mut(),
             state: ThreadState::Started,
@@ -65,8 +82,8 @@ impl Thread {
             handle: handle,
             stack: stack,
             stack_size: stack_size,
-            entry: ptr::null_mut(),
-            entry_arg: ptr::null_mut(),
+            entry: entry,
+            entry_arg: entry_arg,
             tls_slots: [ptr::null_mut(); 0x20],
             reserved: [0; 0x54],
             name_len: 0,
@@ -80,16 +97,76 @@ impl Thread {
         Ok(thread)
     }
 
+    pub fn new(entry: fn(*mut u8), entry_arg: *mut u8, stack: *mut u8, stack_size: usize, name: &str) -> Result<Self> {
+        let mut stack_value = stack;
+        let mut owns_stack = false;
+        if stack_value.is_null() {
+            unsafe {
+                let stack_layout = alloc::alloc::Layout::from_size_align_unchecked(stack_size, 0x1000);
+                stack_value = alloc::alloc::alloc(stack_layout);
+                owns_stack = true;
+            }
+        }
+
+        Self::existing(0, name, stack_value, stack_size, owns_stack, Some(entry), entry_arg)
+    }
+
+    pub fn create(&mut self, priority: i32, cpu_id: i32) -> Result<()> {
+        let mut priority_value = priority;
+        if priority_value == INVALID_PRIORITY {
+            priority_value = get_current_thread().get_priority()?;
+        }
+
+        self.handle = svc::create_thread(thread_entry_impl, self as *mut _ as *mut u8, (self.stack as usize + self.stack_size) as *const u8, priority_value, cpu_id)?;
+        Ok(())
+    }
+
     pub fn set_name(&mut self, name: &str) -> Result<()> {
         util::copy_str_to_pointer(name, self.name_addr)
     }
 
-    pub fn get_name(&self) -> Result<&'static str> {
-        util::get_str_from_pointer(self.name_addr, 0x20)
+    pub fn get_name(&mut self) -> Result<&'static str> {
+        util::get_str_from_pointer(&mut self.name as *mut _ as *mut u8, 0x20)
     }
 
     pub fn get_handle(&self) -> svc::Handle {
         self.handle
+    }
+
+    pub fn get_priority(&self) -> Result<i32> {
+        svc::get_thread_priority(self.handle)
+    }
+
+    pub fn get_id(&self) -> Result<u64> {
+        svc::get_thread_id(self.handle)
+    }
+
+    pub fn start(&self) -> Result<()> {
+        svc::start_thread(self.handle)
+    }
+
+    pub fn create_and_start(&mut self, priority: i32, cpu_id: i32) -> Result<()> {
+        self.create(priority, cpu_id)?;
+        self.start()
+    }
+
+    pub fn join(&self) -> Result<()> {
+        svc::wait_synchronization(&self.handle, 1, -1)?;
+        Ok(())
+    }
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        if self.owns_stack {
+            unsafe {
+                let stack_layout = alloc::alloc::Layout::from_size_align_unchecked(self.stack_size, 0x1000);
+                alloc::alloc::dealloc(self.stack, stack_layout);
+            }
+        }
+        if self.entry.is_some() {
+            let _ = svc::close_handle(self.handle);
+        }
     }
 }
 
@@ -110,8 +187,19 @@ pub fn get_thread_local_storage() -> *mut Tls {
     tls
 }
 
-pub fn get_current_thread() -> &'static Thread {
+pub fn set_current_thread(thread_ref: *mut Thread) {
     unsafe {
-        &*(*get_thread_local_storage()).thread_ref
+        (*thread_ref).self_ref = thread_ref;
+        (*thread_ref).name_addr = &mut (*thread_ref).name as *mut _ as *mut u8;
+
+        let tls = get_thread_local_storage();
+        (*tls).thread_ref = thread_ref;
+    }
+}
+
+pub fn get_current_thread() -> &'static mut Thread {
+    unsafe {
+        let tls = get_thread_local_storage();
+        &mut *(*tls).thread_ref
     }
 }

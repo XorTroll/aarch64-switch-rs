@@ -331,10 +331,15 @@ impl Logger for LmLogger {
 
                     if let Some(head_packet) = packets.get_mut(0) {
                         head_packet.header.flags |= LogPacketFlags::Head;
+
                         if let Ok(process_id) = svc::get_process_id(svc::CURRENT_PROCESS_PSEUDO_HANDLE) {
                             head_packet.header.process_id = process_id;
                         }
-                        // TODO: svc::GetThreadId (some thread implementation with the ID)
+
+                        let cur_thread = thread::get_current_thread();
+                        if let Ok(thread_id) = cur_thread.get_id() {
+                            head_packet.header.thread_id = thread_id;
+                        }
 
                         head_packet.payload.file_name = LogDataStringChunk::from(LogDataChunkKey::FileName, String::from(metadata.file_name));
                         head_packet.payload.function_name = LogDataStringChunk::from(LogDataChunkKey::FunctionName, String::from(metadata.fn_name));
@@ -343,7 +348,7 @@ impl Logger for LmLogger {
                         // TODO: module name
                         head_packet.payload.module_name = LogDataStringChunk::from(LogDataChunkKey::ModuleName, String::from("aarch64-switch-rs"));
                         
-                        let thread_name = match thread::get_current_thread().get_name() {
+                        let thread_name = match cur_thread.get_name() {
                             Ok(name) => name,
                             _ => "<unknown>",
                         };

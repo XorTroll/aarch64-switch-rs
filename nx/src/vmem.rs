@@ -1,7 +1,6 @@
 use crate::result::*;
 use crate::sync;
 use crate::svc;
-use core::mem;
 
 #[derive(Copy, Clone)]
 pub struct VirtualRegion {

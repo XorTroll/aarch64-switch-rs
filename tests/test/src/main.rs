@@ -13,8 +13,7 @@ use nx::util;
 use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
-use nx::service::hid;
-use nx::input;
+use nx::thread;
 
 use core::panic;
 
@@ -30,29 +29,27 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
     }
 }
 
-pub fn input_test() -> Result<()> {
-    let mut input_ctx = input::InputContext::new(0, hid::NpadStyleTag::ProController | hid::NpadStyleTag::Handheld | hid::NpadStyleTag::JoyconPair | hid::NpadStyleTag::JoyconLeft | hid::NpadStyleTag::JoyconRight | hid::NpadStyleTag::SystemExt | hid::NpadStyleTag::System, vec![hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld])?;
-
-    loop {
-        let mut input_player = match input_ctx.is_controller_connected(hid::ControllerId::Player1) {
-            true => input_ctx.get_player(hid::ControllerId::Player1),
-            false => input_ctx.get_player(hid::ControllerId::Handheld)
-        }?;
-
-        let input_keys = input_player.get_button_state_down();
-        if input_keys.contains(input::Key::A) {
-            diag_log!(log::LmLogger { log::LogSeverity::Trace, true } => "A was pressed by {:?}!", input_player.get_controller());
-            break;
-        }
+pub fn spam_fn(_: *mut u8) {
+    for i in 0..20 {
+        diag_log!(log::LmLogger { log::LogSeverity::Trace, true } => "Test log {}", i);
     }
+}
+
+pub fn threading_test() -> Result<()> {
+    let mut thread = thread::Thread::new(spam_fn, core::ptr::null_mut(), core::ptr::null_mut(), 0x2000, "ThreadNo2")?;
+    thread.create_and_start(thread::INVALID_PRIORITY, -2)?;
+
+    spam_fn(core::ptr::null_mut());
+
+    thread.join()?;
 
     Ok(())
 }
 
 #[no_mangle]
 pub fn main() -> Result<()> {
-    if let Err(rc) = input_test() {
-        assert::assert(assert::AssertMode::FatalThrow, rc);
+    if let Err(rc) = threading_test() {
+        assert::assert(assert::AssertMode::SvcBreak, rc);
     }
 
     Ok(())
@@ -60,5 +57,5 @@ pub fn main() -> Result<()> {
 
 #[panic_handler]
 fn panic_handler(info: &panic::PanicInfo) -> ! {
-    util::on_panic_handler::<log::LmLogger>(info, assert::AssertMode::FatalThrow, ResultCode::from::<assert::ResultAssertionFailed>())
+    util::on_panic_handler::<log::LmLogger>(info, assert::AssertMode::SvcBreak, ResultCode::from::<assert::ResultAssertionFailed>())
 }

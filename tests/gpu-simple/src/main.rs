@@ -51,8 +51,10 @@ pub fn gpu_main() -> Result<()> {
     let mut x_mult: i32 = 4;
     let mut y_mult: i32 = 4;
     let shape_size: i32 = 50;
+
     let c_white: u32 = 0xFFFFFFFF;
     let c_blue: u32 = 0xFFFF0000;
+    let c_black: u32 = 0xFF000000;
 
     loop {
         let mut input_player = match input_ctx.is_controller_connected(hid::ControllerId::Player1) {
@@ -71,7 +73,7 @@ pub fn gpu_main() -> Result<()> {
         
         surface_buf.clear(c_white);
         surface_buf.blit_with_color(x_pos, y_pos, shape_size, shape_size, c_blue);
-        surface_buf.draw_text(format!("Hello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), 2, c_blue, 10, 10);
+        surface_buf.draw_text(format!("Hello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), 2, c_black, 10, 10);
 
         x_pos += x_incr * x_mult;
         y_pos += y_incr * y_mult;

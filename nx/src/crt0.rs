@@ -21,12 +21,11 @@ extern "Rust" {
 pub type ExitFn = fn(ResultCode);
 
 static mut G_EXIT_FN: sync::Locked<option::Option<ExitFn>> = sync::Locked::new(false, None);
-static mut G_MAIN_THREAD: thread::Thread = thread::Thread::new();
+static mut G_MAIN_THREAD: thread::Thread = thread::Thread::empty();
 
 unsafe fn initialize_tls_main_thread_impl(thread_handle: svc::Handle) {
-    G_MAIN_THREAD = thread::Thread::existing(thread_handle, "MainThread", ptr::null_mut(), 0, false).unwrap();
-    let mut tls = thread::get_thread_local_storage();
-    (*tls).thread_ref = &mut G_MAIN_THREAD;
+    G_MAIN_THREAD = thread::Thread::existing(thread_handle, "MainThread", ptr::null_mut(), 0, false, None, ptr::null_mut()).unwrap();
+    thread::set_current_thread(&mut G_MAIN_THREAD);
 }
 
 #[no_mangle]
@@ -39,9 +38,6 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
 
     // Relocate ourselves
     dynamic::relocate(aslr_base_address).unwrap();
-
-    // Initialize virtual memory
-    vmem::initialize().unwrap();
 
     let mut heap = util::PointerAndSize::new(ptr::null_mut(), 0);
     let mut main_thread_handle = raw_main_thread_handle as svc::Handle;
@@ -70,6 +66,9 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
     }
 
     initialize_tls_main_thread_impl(main_thread_handle);
+
+    // Initialize virtual memory
+    vmem::initialize().unwrap();
 
     // Set exit function (will be null for non-hbl NROs)
     if is_hbl_nro {
