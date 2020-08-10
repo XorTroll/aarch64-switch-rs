@@ -1,13 +1,14 @@
+use nx::result::*;
 use nx::gpu;
+use nx::service::nv;
+use nx::arm;
 
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
-
+use core::ptr;
+use core::mem;
 use font8x8::UnicodeFonts;
-
-const X_MASK: u32 = !0x7B4;
-const Y_MASK: u32 = 0x7B4;
 
 #[derive(Copy, Clone)]
 pub struct RGBA8 {
@@ -45,7 +46,7 @@ impl RGBA8 {
     }
 
     const fn encode(a: u8, b: u8, c: u8, d: u8) -> u32 {
-        ((a as u32 & 0xFF) | ((b as u32 & 0xFF) << 8) | ((c as u32 & 0xFF) << 16) | ((d as u32 & 0xFF) << 24))
+        (a as u32 & 0xFF) | ((b as u32 & 0xFF) << 8) | ((c as u32 & 0xFF) << 16) | ((d as u32 & 0xFF) << 24)
     }
 
     pub const fn encode_rgba(&self) -> u32 {
@@ -69,98 +70,141 @@ impl RGBA8 {
     }
 }
 
-pub struct SurfaceBuffer {
-    buf: *mut u32,
-    buf_size: usize,
-    width: u32,
-    height: u32,
-    color_fmt: gpu::ColorFormat
+pub struct SurfaceEx<NS: nv::INvDrvService> {
+    gpu_buf: *mut u32,
+    gpu_buf_size: usize,
+    linear_buf: *mut u32,
+    linear_buf_size: usize,
+    slot: i32,
+    fences: gpu::MultiFence,
+    surface_ref: gpu::surface::Surface<NS>,
 }
 
-impl SurfaceBuffer {
-    fn swizzle_mask(mask: u32, mut value: u32) -> u32 {
-        let mut out: u32 = 0;
-        for i in 0..32 {
-            let bit = bit!(i);
-            if (mask & bit) != 0 {
-                if (value & 1) != 0 {
-                    out |= bit;
-                }
-                value >>= 1;
+impl<NS: nv::INvDrvService> SurfaceEx<NS> {
+    pub fn from(surface: gpu::surface::Surface<NS>) -> Self {
+        let aligned_width = surface.compute_stride() as usize;
+        let aligned_height = ((surface.get_height() + 7) & !7) as usize;
+        let linear_buf_size = aligned_width * aligned_height;
+        unsafe {
+            let linear_buf_layout = alloc::alloc::Layout::from_size_align_unchecked(linear_buf_size, 8);
+            let linear_buf = alloc::alloc::alloc_zeroed(linear_buf_layout);
+            Self { gpu_buf: ptr::null_mut(), gpu_buf_size: 0, linear_buf: linear_buf as *mut u32, linear_buf_size: linear_buf_size, slot: 0, fences: mem::zeroed(), surface_ref: surface }
+        }
+    }
+
+    pub fn start(&mut self) -> Result<()> {
+        let (buf, buf_size, slot, _has_fences, fences) = self.surface_ref.dequeue_buffer(true)?;
+        self.gpu_buf = buf as *mut u32;
+        self.gpu_buf_size = buf_size;
+        self.slot = slot;
+        self.fences = fences;
+        self.surface_ref.wait_fences(fences, -1)
+    }
+
+    fn convert_buffers_gob_impl(out_gob_buf: *mut u8, in_gob_buf: *mut u8, stride: u32) {
+        unsafe {
+            let mut tmp_out_gob_buf_128 = out_gob_buf as *mut u128;
+            for i in 0..32 {
+                let y = ((i >> 1) & 0x6) | (i & 0x1);
+                let x = ((i << 3) & 0x10) | ((i << 1) & 0x20);
+                let out_gob_buf_128 = tmp_out_gob_buf_128 as *mut u128;
+                let in_gob_buf_128 = in_gob_buf.offset((y * stride + x) as isize) as *mut u128;
+                *out_gob_buf_128 = *in_gob_buf_128;
+                tmp_out_gob_buf_128 = tmp_out_gob_buf_128.offset(1);
             }
         }
-        out
-    }
-    
-    const fn clamp(coord: i32, max: u32) -> u32 {
-        if coord < 0 {
-            return 0;
-        }
-        if coord > max as i32 {
-            return max;
-        }
-        coord as u32
     }
 
-    fn is_valid(&self) -> bool {
-        !self.buf.is_null() && (self.buf_size > 0) && (self.width > 0) && (self.height > 0)
+    fn convert_buffers_impl(out_buf: *mut u8, in_buf: *mut u8, stride: u32, height: u32) {
+        let block_height_gobs = 1 << gpu::BLOCK_HEIGHT_LOG2;
+        let block_height_px = 8 << gpu::BLOCK_HEIGHT_LOG2;
+
+        let width_blocks = stride >> 6;
+        let height_blocks = (height + block_height_px - 1) >> (3 + gpu::BLOCK_HEIGHT_LOG2);
+        let mut tmp_out_buf = out_buf;
+
+        for block_y in 0..height_blocks {
+            for block_x in 0..width_blocks {
+                for gob_y in 0..block_height_gobs {
+                    unsafe {
+                        let x = block_x * 64;
+                        let y = block_y * block_height_px + gob_y * 8;
+                        if y < height {
+                            let in_gob_buf = in_buf.offset((y * stride + x) as isize);
+                            Self::convert_buffers_gob_impl(tmp_out_buf, in_gob_buf, stride);
+                        }
+                        tmp_out_buf = tmp_out_buf.offset(512);
+                    }
+                }
+            }
+        }
     }
 
-    pub const fn from(buf: *mut u8, buf_size: usize, width: u32, height: u32, color_fmt: gpu::ColorFormat) -> Self {
-        Self { buf: buf as *mut u32, buf_size: buf_size, width: width, height: height, color_fmt: color_fmt }
+    pub fn end(&mut self) -> Result<()> {
+        Self::convert_buffers_impl(self.gpu_buf as *mut u8, self.linear_buf as *mut u8, self.surface_ref.compute_stride(), self.surface_ref.get_height());
+        arm::cache_flush(self.gpu_buf as *mut u8, self.gpu_buf_size);
+        self.surface_ref.queue_buffer(self.slot, self.fences)?;
+        self.surface_ref.wait_vsync_event(-1)
     }
 
     pub fn clear(&mut self, color: RGBA8) {
-        if self.is_valid() {
-            unsafe {
-                let buf_size_32 = self.buf_size / 4;
-                for i in 0..buf_size_32 {
-                    let cur = self.buf.offset(i as isize);
-                    *cur = color.encode_abgr();
-                }
+        unsafe {
+            let buf_size_32 = self.linear_buf_size / mem::size_of::<u32>();
+            for i in 0..buf_size_32 {
+                let cur = self.linear_buf.offset(i as isize);
+                *cur = color.encode_abgr();
             }
         }
     }
 
-    pub fn blit_with_color(&mut self, x: i32, y: i32, width: i32, height: i32, color: RGBA8) {
-        if self.is_valid() {
-            unsafe {
-                let x0 = Self::clamp(x, self.width);
-                let x1 = Self::clamp(x + width, self.width);
-                let y0 = Self::clamp(y, self.height);
-                let y1 = Self::clamp(y + height, self.height);
+    pub fn draw_single(&mut self, x: i32, y: i32, color: RGBA8) {
+        unsafe {
+            let offset = ((self.surface_ref.compute_stride() / mem::size_of::<u32>() as u32) as i32 * y + x) as isize;
+            let cur = self.linear_buf.offset(offset);
+            let old_color = RGBA8::from_abgr(*cur);
+            let new_color = color.blend_with(old_color);
+            *cur = new_color.encode_abgr();
+        }
+    }
 
-                let bpp = gpu::calculate_bpp(self.color_fmt);
-                let aligned_width = gpu::align_width(bpp, self.width);
-                let y_increment = Self::swizzle_mask(X_MASK, aligned_width);
+    fn clamp(max: i32, value: i32) -> i32 {
+        if value < 0 {
+            return 0;
+        }
+        if value > max {
+            return max;
+        }
+        value
+    }
 
-                let mut x0_offset = Self::swizzle_mask(X_MASK, x0) + y_increment * (y0 / gpu::BLOCK_HEIGHT);
-                let mut y0_offset = Self::swizzle_mask(Y_MASK, y0);
+    pub fn get_width(&self) -> u32 {
+        self.surface_ref.get_width()
+    }
 
-                for _ in y0..y1 {
-                    let buf_line = self.buf.offset(y0_offset as isize);
-                    let mut x_offset = x0_offset;
-                    for _ in x0..x1 {
-                        let cur = buf_line.offset(x_offset as isize);
-                        let old_color = RGBA8::from_abgr(*cur);
-                        let new_color = color.blend_with(old_color);
-                        *cur = new_color.encode_abgr();
-                        x_offset = (x_offset - X_MASK) & X_MASK;
-                    }
-                    y0_offset = (y0_offset - Y_MASK) & Y_MASK;
-                    if y0_offset == 0 {
-                        x0_offset += y_increment;
-                    }
-                }
+    pub fn get_height(&self) -> u32 {
+        self.surface_ref.get_height()
+    }
+
+    pub fn get_color_format(&self) -> gpu::ColorFormat {
+        self.surface_ref.get_color_format()
+    }
+
+    pub fn draw(&mut self, x: i32, y: i32, width: i32, height: i32, color: RGBA8) {
+        let s_width = self.surface_ref.get_width() as i32;
+        let s_height = self.surface_ref.get_height() as i32;
+        let x0 = Self::clamp(s_width, x);
+        let x1 = Self::clamp(s_width, x + width);
+        let y0 = Self::clamp(s_height, y);
+        let y1 = Self::clamp(s_height, y + height);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                self.draw_single(x, y, color);
             }
         }
     }
 
-    fn draw_font_text_impl(&mut self, font: &rusttype::Font, text: &str, color: RGBA8, size: f32, x: i32, y: i32) {
-        let scale = rusttype::Scale::uniform(size);
-        let v_metrics = font.v_metrics(scale);
-        
-        let glyphs: Vec<_> = font.layout(&text[..], rusttype::Scale::uniform(size), rusttype::point(x as f32, y as f32 + v_metrics.ascent)).collect();
+    fn draw_font_text_impl(&mut self, font: &rusttype::Font, text: &str, color: RGBA8, scale: rusttype::Scale, v_metrics: rusttype::VMetrics, x: i32, y: i32) {
+        let glyphs: Vec<_> = font.layout(&text[..], scale, rusttype::point(0.0, v_metrics.ascent)).collect();
         for glyph in &glyphs {
             if let Some(bounding_box) = glyph.pixel_bounding_box() {
                 // Draw the glyph into the image per-pixel by using the draw closure
@@ -168,7 +212,7 @@ impl SurfaceBuffer {
                     let mut pix_color = color;
                     // Different alpha depending on the pixel
                     pix_color.a = (g_v * 255.0) as u8;
-                    self.blit_with_color(g_x as i32 + bounding_box.min.x as i32, g_y as i32 + bounding_box.min.y as i32, 1, 1, pix_color);
+                    self.draw_single(x + g_x as i32 + bounding_box.min.x as i32, y + g_y as i32 + bounding_box.min.y as i32, pix_color);
                 });
             }
         }
@@ -180,7 +224,7 @@ impl SurfaceBuffer {
         
         let mut tmp_y = y;
         for semi_text in text.lines() {
-            self.draw_font_text_impl(font, semi_text, color, size, x, tmp_y);
+            self.draw_font_text_impl(font, semi_text, color, scale, v_metrics, x, tmp_y);
             tmp_y += v_metrics.ascent as i32;
         }
     }
@@ -203,7 +247,7 @@ impl SurfaceBuffer {
                                 match *gx & 1 << bit {
                                     0 => {},
                                     _ => {
-                                        self.blit_with_color(tmp_x, tmp_y, scale, scale, color);
+                                        self.draw(tmp_x, tmp_y, scale, scale, color);
                                     },
                                 }
                                 tmp_x += scale;
@@ -216,6 +260,15 @@ impl SurfaceBuffer {
                     }
                 }
             }
+        }
+    }
+}
+
+impl<NS: nv::INvDrvService> Drop for SurfaceEx<NS> {
+    fn drop(&mut self) {
+        unsafe {
+            let linear_buf_layout = alloc::alloc::Layout::from_size_align_unchecked(self.linear_buf_size, 8);
+            alloc::alloc::dealloc(self.linear_buf as *mut u8, linear_buf_layout);
         }
     }
 }

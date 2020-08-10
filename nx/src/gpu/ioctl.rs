@@ -1,13 +1,5 @@
 use crate::service::nv;
 use super::*;
-use enumflags2::BitFlags;
-
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
-#[repr(u8)]
-pub enum IoctlMode {
-    In = 0b1,
-    Out = 0b10,
-}
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(u8)]
@@ -19,7 +11,6 @@ pub enum IoctlFd {
 
 pub trait Ioctl {
     fn get_id() -> nv::IoctlId;
-    fn get_mode() -> BitFlags<IoctlMode>;
     fn get_fd() -> IoctlFd;
 }
 
@@ -33,10 +24,6 @@ pub struct NvMapCreate {
 impl Ioctl for NvMapCreate {
     fn get_id() -> nv::IoctlId {
         nv::IoctlId::NvMapCreate
-    }
-
-    fn get_mode() -> BitFlags<IoctlMode> {
-        IoctlMode::In | IoctlMode::Out
     }
 
     fn get_fd() -> IoctlFd {
@@ -54,10 +41,6 @@ pub struct NvMapFromId {
 impl Ioctl for NvMapFromId {
     fn get_id() -> nv::IoctlId {
         nv::IoctlId::NvMapFromId
-    }
-
-    fn get_mode() -> BitFlags<IoctlMode> {
-        IoctlMode::In | IoctlMode::Out
     }
 
     fn get_fd() -> IoctlFd {
@@ -89,10 +72,6 @@ impl Ioctl for NvMapAlloc {
         nv::IoctlId::NvMapAlloc
     }
 
-    fn get_mode() -> BitFlags<IoctlMode> {
-        IoctlMode::In | IoctlMode::Out
-    }
-
     fn get_fd() -> IoctlFd {
         IoctlFd::NvMap
     }
@@ -110,10 +89,6 @@ impl Ioctl for NvMapGetId {
         nv::IoctlId::NvMapGetId
     }
 
-    fn get_mode() -> BitFlags<IoctlMode> {
-        IoctlMode::In | IoctlMode::Out
-    }
-
     fn get_fd() -> IoctlFd {
         IoctlFd::NvMap
     }
@@ -122,18 +97,13 @@ impl Ioctl for NvMapGetId {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct NvHostCtrlSyncptWait {
-    pub id: u32,
-    pub threshold: u32,
+    pub fence: Fence,
     pub timeout: i32
 }
 
 impl Ioctl for NvHostCtrlSyncptWait {
     fn get_id() -> nv::IoctlId {
         nv::IoctlId::NvHostCtrlSyncptWait
-    }
-
-    fn get_mode() -> BitFlags<IoctlMode> {
-        BitFlags::from(IoctlMode::In)
     }
 
     fn get_fd() -> IoctlFd {

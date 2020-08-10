@@ -1,10 +1,11 @@
 extern crate alloc;
 
 use crate::result::*;
-use crate::diag::assert;
 use linked_list_allocator::LockedHeap;
 use alloc::rc;
 use core::cell;
+
+global_asm!(include_str!("mem.s"));
 
 pub type SharedObject<T> = rc::Rc<cell::RefCell<T>>;
 
@@ -31,8 +32,18 @@ pub fn initialize(heap_address: *mut u8, heap_size: usize) {
     }
 }
 
+pub fn flush_data_cache(address: *mut u8, size: usize) {
+    extern "C" {
+        fn __nx_mem_flush_data_cache(address: *mut u8, size: usize);
+    }
+
+    unsafe {
+        __nx_mem_flush_data_cache(address, size);
+    }
+}
+
 #[alloc_error_handler]
-fn alloc_error_handler(layout: core::alloc::Layout) -> ! {
+fn alloc_error_handler(_layout: core::alloc::Layout) -> ! {
     let rc: Result<()> = Err(ResultCode::from::<ResultMemoryAllocationFailed>());
     rc.unwrap();
     loop {}

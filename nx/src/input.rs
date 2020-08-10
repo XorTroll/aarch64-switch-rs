@@ -188,11 +188,24 @@ impl Player {
         last_entry.button_state
     }
 
+    pub fn get_button_state_held(&mut self) -> BitFlags<Key> {
+        let button_state = self.get_button_state();
+        self.prev_button_state = button_state;
+        BitFlags::from_bits_truncate(button_state)
+    }
+
     pub fn get_button_state_down(&mut self) -> BitFlags<Key> {
         let button_state = self.get_button_state();
-        let down_state = !self.prev_button_state & button_state;
+        let down_state = (!self.prev_button_state) & button_state;
         self.prev_button_state = button_state;
         BitFlags::from_bits_truncate(down_state)
+    }
+
+    pub fn get_button_state_up(&mut self) -> BitFlags<Key> {
+        let button_state = self.get_button_state();
+        let up_state = self.prev_button_state & (!button_state);
+        self.prev_button_state = button_state;
+        BitFlags::from_bits_truncate(up_state)
     }
 
     pub fn get_controller(&self) -> hid::ControllerId {

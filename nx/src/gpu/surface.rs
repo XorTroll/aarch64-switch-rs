@@ -36,6 +36,8 @@ pub struct Surface<NS: nv::INvDrvService> {
     nvhost_fd: u32,
     nvmap_fd: u32,
     nvhostctrl_fd: u32,
+    vsync_event_handle: u32,
+    buffer_event_handle: u32
 }
 
 impl<NS: nv::INvDrvService> Surface<NS> {
@@ -43,7 +45,9 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         let mut binder = binder::Binder::new(binder_handle, hos_binder_driver)?;
         binder.increase_refcounts()?;
         let _ = binder.connect(ConnectionApi::Cpu, false)?;
-        let mut surface = Self { binder: binder, nvdrv_srv: nvdrv_srv, application_display_service: application_display_service, width: width, height: height, buffer_data: ptr::null_mut(), buffer_alloc_layout: alloc::alloc::Layout::new::<u8>(), single_buffer_size: 0, buffer_count: buffer_count, slot_has_requested: [false; MAX_BUFFERS], graphic_buf: unsafe { cmem::zeroed() }, color_fmt: color_fmt, pixel_fmt: pixel_fmt, layout: layout, display_id: display_id, layer_id: layer_id, layer_destroy_fn: layer_destroy_fn, nvhost_fd: nvhost_fd, nvmap_fd: nvmap_fd, nvhostctrl_fd: nvhostctrl_fd };
+        let vsync_event_handle = application_display_service.borrow_mut().get_display_vsync_event(display_id)?;
+        let buffer_event_handle = binder.get_native_handle(0xF)?;
+        let mut surface = Self { binder: binder, nvdrv_srv: nvdrv_srv, application_display_service: application_display_service, width: width, height: height, buffer_data: ptr::null_mut(), buffer_alloc_layout: alloc::alloc::Layout::new::<u8>(), single_buffer_size: 0, buffer_count: buffer_count, slot_has_requested: [false; MAX_BUFFERS], graphic_buf: unsafe { cmem::zeroed() }, color_fmt: color_fmt, pixel_fmt: pixel_fmt, layout: layout, display_id: display_id, layer_id: layer_id, layer_destroy_fn: layer_destroy_fn, nvhost_fd: nvhost_fd, nvmap_fd: nvmap_fd, nvhostctrl_fd: nvhostctrl_fd, vsync_event_handle: vsync_event_handle, buffer_event_handle: buffer_event_handle };
         surface.initialize()?;
         Ok(surface)
     }
@@ -55,16 +59,10 @@ impl<NS: nv::INvDrvService> Surface<NS> {
             ioctl::IoctlFd::NvHostCtrl => self.nvhostctrl_fd,
         };
 
-        let (in_buf, in_size) = match I::get_mode().contains(ioctl::IoctlMode::In) {
-            true => (i as *mut I as *const u8, cmem::size_of::<I>()),
-            false => (ptr::null::<u8>(), 0usize)
-        };
-        let (out_buf, out_size) = match I::get_mode().contains(ioctl::IoctlMode::Out) {
-            true => (i as *mut I as *const u8, cmem::size_of::<I>()),
-            false => (ptr::null::<u8>(), 0usize)
-        };
+        let buf = i as *mut I as *const u8;
+        let buf_size = cmem::size_of::<I>();
 
-        let err = self.nvdrv_srv.borrow_mut().ioctl(fd, I::get_id(), in_buf, in_size, out_buf, out_size)?;
+        let err = self.nvdrv_srv.borrow_mut().ioctl(fd, I::get_id(), buf, buf_size, buf, buf_size)?;
         nv::convert_error_code(err)
     }
 
@@ -197,6 +195,8 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         qbi.swap_interval = 1;
         qbi.fences = fences;
 
+        mem::flush_data_cache(self.buffer_data, self.single_buffer_size * self.buffer_count as usize);
+
         self.binder.queue_buffer(slot, qbi)?;
         Ok(())
     }
@@ -204,19 +204,42 @@ impl<NS: nv::INvDrvService> Surface<NS> {
     pub fn wait_fences(&mut self, fences: MultiFence, timeout: i32) -> Result<()> {
         for i in 0..fences.fence_count {
             let mut ioctl_syncptwait: ioctl::NvHostCtrlSyncptWait = unsafe { cmem::zeroed() };
-            ioctl_syncptwait.id = fences.fences[i as usize].id;
-            ioctl_syncptwait.threshold = fences.fences[i as usize].value;
+            ioctl_syncptwait.fence = fences.fences[i as usize];
             ioctl_syncptwait.timeout = timeout;
 
-            self.do_ioctl(&mut ioctl_syncptwait)?;
+            if let Err(_) = self.do_ioctl(&mut ioctl_syncptwait) {
+                // Don't error, but stop waiting for fences
+                break;
+            }
         }
         Ok(())
     }
 
     pub fn wait_buffer_event(&mut self, timeout: i64) -> Result<()> {
-        let handle = self.binder.get_buffer_event_handle();
-        svc::wait_synchronization(&handle, 1, timeout)?;
-        svc::reset_signal(handle)
+        svc::wait_synchronization(&self.buffer_event_handle, 1, timeout)?;
+        svc::reset_signal(self.buffer_event_handle)
+    }
+
+    pub fn wait_vsync_event(&mut self, timeout: i64) -> Result<()> {
+        svc::wait_synchronization(&self.vsync_event_handle, 1, timeout)?;
+        svc::reset_signal(self.vsync_event_handle)
+    }
+
+    pub fn get_width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn get_height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn get_color_format(&self) -> ColorFormat {
+        self.color_fmt
+    }
+
+    pub fn compute_stride(&self) -> u32 {
+        let bpp = calculate_bpp(self.color_fmt);
+        align_width(bpp, self.width) * bpp
     }
 }
 

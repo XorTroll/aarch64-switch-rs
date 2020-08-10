@@ -6,6 +6,8 @@ extern crate nx;
 
 #[macro_use]
 extern crate alloc;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 use nx::svc;
 use nx::result::*;
@@ -35,6 +37,64 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
     }
 }
 
+pub struct Square {
+    x: i32,
+    y: i32,
+    size: i32,
+    x_incr: i32,
+    y_incr: i32,
+    x_mult: i32,
+    y_mult: i32,
+    color: ui2d::RGBA8
+}
+
+impl Square {
+    pub fn new(x: i32, y: i32, size: i32, color: ui2d::RGBA8) -> Self {
+        Self { x: x, y: y, size: size, x_incr: 1, y_incr: 1, x_mult: 1, y_mult: 1, color: color }
+    }
+
+    pub fn handle_render<NS: nv::INvDrvService>(&mut self, surface: &mut ui2d::SurfaceEx<NS>) {
+        surface.draw(self.x, self.y, self.size, self.size, self.color);
+
+        self.x += self.x_incr * self.x_mult;
+        self.y += self.y_incr * self.y_mult;
+
+        if self.x <= 0 {
+            if self.x_incr < 0 {
+                self.x_incr -= 1;
+                self.x_incr = -self.x_incr;
+            }
+            self.x += self.x_incr * self.x_mult;
+            self.x_mult += 1;
+        }
+        else if (self.x + self.size) as u32 >= surface.get_width() {
+            if self.x_incr > 0 {
+                self.x_incr += 1;
+                self.x_incr = -self.x_incr;
+            }
+            self.x += self.x_incr * self.x_mult;
+            self.x_mult += 1;
+        }
+
+        if self.y <= 0 {
+            if self.y_incr < 0 {
+                self.y_incr -= 1;
+                self.y_incr = -self.y_incr;
+            }
+            self.y += self.y_incr * self.y_mult;
+            self.y_mult += 1;
+        }
+        else if (self.y + self.size) as u32 >= surface.get_height() {
+            if self.y_incr > 0 {
+                self.y_incr += 1;
+                self.y_incr = -self.y_incr;
+            }
+            self.y += self.y_incr * self.y_mult;
+            self.y_mult += 1;
+        }
+    }
+}
+
 pub fn gpu_main() -> Result<()> {
     let mut gpu_ctx: gpu::GpuContext<vi::SystemRootService, nv::AppletNvDrvService> = gpu::GpuContext::new(0x800000)?;
     let mut input_ctx = input::InputContext::new(0, hid::NpadStyleTag::ProController | hid::NpadStyleTag::Handheld | hid::NpadStyleTag::JoyconPair | hid::NpadStyleTag::JoyconLeft | hid::NpadStyleTag::JoyconRight | hid::NpadStyleTag::SystemExt | hid::NpadStyleTag::System, vec![hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld])?;
@@ -42,23 +102,17 @@ pub fn gpu_main() -> Result<()> {
     let width: u32 = 1280;
     let height: u32 = 720;
     let color_fmt = gpu::ColorFormat::A8B8G8R8;
-    let mut surface = gpu_ctx.create_stray_layer_surface("Default", width, height, 2, color_fmt, gpu::PixelFormat::RGBA_8888, gpu::Layout::BlockLinear)?;
 
-    let mut x_pos: i32 = 50;
-    let mut y_pos: i32 = 50;
-    let mut x_incr: i32 = 1;
-    let mut y_incr: i32 = 1;
-    let mut x_mult: i32 = 4;
-    let mut y_mult: i32 = 4;
-    let shape_size: i32 = 50;
+    let mut squares: Vec<Square> = Vec::new();
 
     let c_white = ui2d::RGBA8::new_rgb(0xFF, 0xFF, 0xFF);
-    let c_blue = ui2d::RGBA8::new_rgb(0, 0, 0xFF);
     let c_black = ui2d::RGBA8::new_rgb(0, 0, 0);
     let c_royal_blue = ui2d::RGBA8::new_rgb(65, 105, 225);
 
     let font_data = include_bytes!("../font/Roboto-Medium.ttf");
     let font = rusttype::Font::try_from_bytes(font_data as &[u8]).unwrap();
+
+    let mut surface = ui2d::SurfaceEx::from(gpu_ctx.create_stray_layer_surface("Default", width, height, 2, color_fmt, gpu::PixelFormat::RGBA_8888, gpu::Layout::BlockLinear)?);
 
     loop {
         let mut input_player = match input_ctx.is_controller_connected(hid::ControllerId::Player1) {
@@ -66,54 +120,25 @@ pub fn gpu_main() -> Result<()> {
             false => input_ctx.get_player(hid::ControllerId::Handheld)
         }?;
         let input_keys = input_player.get_button_state_down();
-        if input_keys.contains(input::Key::Plus) {
-            diag_log!(log::LmLogger { log::LogSeverity::Trace, false } => "Plus pressed -> exiting...");
+        if input_keys.contains(input::Key::A) {
+            squares.push(Square::new(10, 10, 50, c_royal_blue));
+        }
+        else if input_keys.contains(input::Key::Plus) {
             // Exit if Plus/+ is pressed.
             break;
         }
 
-        let (buf, buf_size, slot, has_fences, fences) = surface.dequeue_buffer(true)?;
-        let mut surface_buf = ui2d::SurfaceBuffer::from(buf, buf_size, width, height, color_fmt);
+        surface.start()?;
         
-        surface_buf.clear(c_white);
-        surface_buf.blit_with_color(x_pos, y_pos, shape_size, shape_size, c_blue);
-        surface_buf.draw_font_text(&font, format!("(Drawn with Roboto)\n\nHello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), c_royal_blue, 20.0, 10, 10);
-        surface_buf.draw_bitmap_text(format!("(Drawn with standard bitmap font)\n\nHello world from aarch64-switch-rs!\nPress + to exit this demo.\n\nBox position: ({}, {})", x_pos, y_pos), c_royal_blue, 1, 10, 250);
+        surface.clear(c_white);
+        surface.draw_font_text(&font, String::from("(Drawn with Roboto TTF font)\n\nHello world from aarch64-switch-rs!\nPress A to spawn moving squares.\nPress + to exit this test."), c_black, 25.0, 10, 10);
+        surface.draw_bitmap_text(String::from("(Drawn with standard bitmap font)\n\nHello world from aarch64-switch-rs!\nPress A to spawn moving squares.\nPress + to exit this test."), c_black, 2, 10, 250);
 
-        x_pos += x_incr * x_mult;
-        y_pos += y_incr * y_mult;
-
-        if x_pos <= 0 {
-            if x_incr < 0 {
-                x_incr = -x_incr;
-            }
-            x_pos += x_incr * x_mult;
-            x_mult += 1;
-        }
-        else if (x_pos + shape_size) as u32 >= width {
-            if x_incr > 0 {
-                x_incr = -x_incr;
-            }
-            x_pos += x_incr * x_mult;
-            x_mult += 1;
+        for square in squares.iter_mut() {
+            square.handle_render(&mut surface);
         }
 
-        if y_pos <= 0 {
-            if y_incr < 0 {
-                y_incr = -y_incr;
-            }
-            y_pos += y_incr * y_mult;
-            y_mult += 1;
-        }
-        else if (y_pos + shape_size) as u32 >= height {
-            if y_incr > 0 {
-                y_incr = -y_incr;
-            }
-            y_pos += y_incr * y_mult;
-            y_mult += 1;
-        }
-
-        surface.queue_buffer(slot, fences)?;
+        surface.end()?;
     }
 
     Ok(())

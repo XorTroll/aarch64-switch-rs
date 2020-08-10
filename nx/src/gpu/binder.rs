@@ -80,13 +80,11 @@ pub fn convert_error_code(err: ErrorCode) -> Result<()> {
 pub struct Binder {
     handle: i32,
     hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>,
-    buffer_event_handle: u32
 }
 
 impl Binder {
     pub fn new(handle: i32, hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>) -> Result<Self> {
-        let buffer_event_handle = hos_binder_driver.borrow_mut().get_native_handle(handle, 0xF)?;
-        Ok(Self { handle: handle, hos_binder_driver: hos_binder_driver, buffer_event_handle: buffer_event_handle })
+        Ok(Self { handle: handle, hos_binder_driver: hos_binder_driver })
     }
 
     fn transact_parcel_begin(&self, parcel: &mut parcel::Parcel) -> Result<()> {
@@ -115,10 +113,6 @@ impl Binder {
 
     pub fn get_handle(&self) -> i32 {
         self.handle
-    }
-
-    pub fn get_buffer_event_handle(&self) -> u32 {
-        self.buffer_event_handle
     }
 
     pub fn get_hos_binder_driver(&mut self) -> mem::SharedObject<dispdrv::HOSBinderDriver> {
