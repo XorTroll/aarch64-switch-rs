@@ -4,6 +4,7 @@ use crate::svc;
 use crate::ipc;
 use crate::service;
 use crate::service::SessionObject;
+use crate::service::applet;
 use enumflags2::BitFlags;
 
 pub struct DisplayName {
@@ -32,7 +33,7 @@ pub trait IApplicationDisplayService {
     fn get_relay_service<S: SessionObject>(&mut self) -> Result<S>;
     fn open_display(&mut self, name: DisplayName) -> Result<DisplayId>;
     fn close_display(&mut self, display_id: DisplayId) -> Result<()>;
-    fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: u64, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize>;
+    fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: applet::AppletResourceUserId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize>;
     fn create_stray_layer(&mut self, flags: BitFlags<LayerFlags>, display_id: DisplayId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<(LayerId, usize)>;
     fn destroy_stray_layer(&mut self, layer_id: LayerId) -> Result<()>;
     fn get_display_vsync_event(&mut self, display_id: DisplayId) -> Result<svc::Handle>;
@@ -96,13 +97,13 @@ impl IApplicationDisplayService for ApplicationDisplayService {
         Ok(())
     }
 
-    fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: u64, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize> {
+    fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: applet::AppletResourceUserId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize> {
         let native_window_size: usize;
         ipc_client_session_send_request_command!([self.session; 2020; true] => {
             In {
                 display_name: DisplayName = name,
                 layer_id: LayerId = layer_id,
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};

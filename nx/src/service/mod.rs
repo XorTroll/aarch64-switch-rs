@@ -22,6 +22,8 @@ pub mod fatal;
 
 pub mod hid;
 
+pub mod applet;
+
 pub trait SessionObject {
     fn new(session: ipc::Session) -> Self;
     fn get_session(&self) -> ipc::Session;

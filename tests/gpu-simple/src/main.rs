@@ -15,6 +15,7 @@ use nx::util;
 use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
+use nx::service;
 use nx::service::vi;
 use nx::service::nv;
 use nx::gpu;

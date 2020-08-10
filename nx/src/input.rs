@@ -3,6 +3,7 @@ use alloc::vec::Vec;
 
 use enumflags2::BitFlags;
 use crate::result::*;
+use crate::service::applet;
 use crate::service::hid;
 use crate::service::hid::IAppletResource;
 use crate::service::hid::IHidServer;
@@ -218,7 +219,7 @@ pub struct InputContext {
     hid_service: mem::SharedObject<hid::HidServer>,
     applet_resource: mem::SharedObject<hid::AppletResource>,
     shared_mem_handle: svc::Handle,
-    aruid: u64,
+    aruid: applet::AppletResourceUserId,
     shared_mem_data: *const SharedMemoryData
 }
 
@@ -241,7 +242,7 @@ fn get_index_for_controller(controller: hid::ControllerId) -> Result<usize> {
 }
 
 impl InputContext {
-    pub fn new(aruid: u64, supported_tags: BitFlags<hid::NpadStyleTag>, controllers: Vec<hid::ControllerId>) -> Result<Self> {
+    pub fn new(aruid: applet::AppletResourceUserId, supported_tags: BitFlags<hid::NpadStyleTag>, controllers: Vec<hid::ControllerId>) -> Result<Self> {
         let hid_srv = service::new_shared_service_object::<hid::HidServer>()?;
         let applet_res: mem::SharedObject<hid::AppletResource> = hid_srv.borrow_mut().create_applet_resource(aruid)?;
         let shmem_handle = applet_res.borrow_mut().get_shared_memory_handle()?;

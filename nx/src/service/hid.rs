@@ -3,6 +3,7 @@ use crate::result::*;
 use crate::ipc;
 use crate::service;
 use crate::service::SessionObject;
+use crate::service::applet;
 use crate::svc;
 
 #[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
@@ -65,13 +66,13 @@ impl IAppletResource for AppletResource {
 }
 
 pub trait IHidServer {
-    fn create_applet_resource<S: service::SessionObject>(&mut self, aruid: u64) -> Result<S>;
-    fn set_supported_npad_style_set(&mut self, aruid: u64, npad_style_tag: BitFlags<NpadStyleTag>) -> Result<()>;
-    fn set_supported_npad_id_type(&mut self, aruid: u64, controllers: *const u8, controllers_size: usize) -> Result<()>;
-    fn activate_npad(&mut self, aruid: u64) -> Result<()>;
-    fn deactivate_npad(&mut self, aruid: u64) -> Result<()>;
-    fn set_npad_joy_assignment_mode_single(&mut self, aruid: u64, controller: ControllerId, joy_type: NpadJoyDeviceType) -> Result<()>;
-    fn set_npad_joy_assignment_mode_dual(&mut self, aruid: u64, controller: ControllerId) -> Result<()>;
+    fn create_applet_resource<S: service::SessionObject>(&mut self, aruid: applet::AppletResourceUserId) -> Result<S>;
+    fn set_supported_npad_style_set(&mut self, aruid: applet::AppletResourceUserId, npad_style_tag: BitFlags<NpadStyleTag>) -> Result<()>;
+    fn set_supported_npad_id_type(&mut self, aruid: applet::AppletResourceUserId, controllers: *const u8, controllers_size: usize) -> Result<()>;
+    fn activate_npad(&mut self, aruid: applet::AppletResourceUserId) -> Result<()>;
+    fn deactivate_npad(&mut self, aruid: applet::AppletResourceUserId) -> Result<()>;
+    fn set_npad_joy_assignment_mode_single(&mut self, aruid: applet::AppletResourceUserId, controller: ControllerId, joy_type: NpadJoyDeviceType) -> Result<()>;
+    fn set_npad_joy_assignment_mode_dual(&mut self, aruid: applet::AppletResourceUserId, controller: ControllerId) -> Result<()>;
 }
 
 session_object_define!(HidServer);
@@ -91,11 +92,11 @@ impl service::Service for HidServer {
 }
 
 impl IHidServer for HidServer {
-    fn create_applet_resource<S: service::SessionObject>(&mut self, aruid: u64) -> Result<S> {
+    fn create_applet_resource<S: service::SessionObject>(&mut self, aruid: applet::AppletResourceUserId) -> Result<S> {
         let applet_resource: ipc::Session;
         ipc_client_session_send_request_command!([self.session; 0; true] => {
             In {
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};
@@ -111,11 +112,11 @@ impl IHidServer for HidServer {
         Ok(S::new(applet_resource))
     }
 
-    fn set_supported_npad_style_set(&mut self, aruid: u64, npad_style_tag: BitFlags<NpadStyleTag>) -> Result<()> {
+    fn set_supported_npad_style_set(&mut self, aruid: applet::AppletResourceUserId, npad_style_tag: BitFlags<NpadStyleTag>) -> Result<()> {
         ipc_client_session_send_request_command!([self.session; 100; true] => {
             In {
                 npad_style_tag: BitFlags<NpadStyleTag> = npad_style_tag,
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};
@@ -132,7 +133,7 @@ impl IHidServer for HidServer {
     fn set_supported_npad_id_type(&mut self, aruid: u64, controllers: *const u8, controllers_size: usize) -> Result<()> {
         ipc_client_session_send_request_command!([self.session; 102; true] => {
             In {
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};
@@ -148,10 +149,10 @@ impl IHidServer for HidServer {
         Ok(())
     }
 
-    fn activate_npad(&mut self, aruid: u64) -> Result<()> {
+    fn activate_npad(&mut self, aruid: applet::AppletResourceUserId) -> Result<()> {
         ipc_client_session_send_request_command!([self.session; 103; true] => {
             In {
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};
@@ -165,10 +166,10 @@ impl IHidServer for HidServer {
         Ok(())
     }
 
-    fn deactivate_npad(&mut self, aruid: u64) -> Result<()> {
+    fn deactivate_npad(&mut self, aruid: applet::AppletResourceUserId) -> Result<()> {
         ipc_client_session_send_request_command!([self.session; 104; true] => {
             In {
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};
@@ -182,11 +183,11 @@ impl IHidServer for HidServer {
         Ok(())
     }
 
-    fn set_npad_joy_assignment_mode_single(&mut self, aruid: u64, controller: ControllerId, joy_type: NpadJoyDeviceType) -> Result<()> {
+    fn set_npad_joy_assignment_mode_single(&mut self, aruid: applet::AppletResourceUserId, controller: ControllerId, joy_type: NpadJoyDeviceType) -> Result<()> {
         ipc_client_session_send_request_command!([self.session; 123; true] => {
             In {
                 controller: ControllerId = controller,
-                aruid: u64 = aruid,
+                aruid: applet::AppletResourceUserId = aruid,
                 joy_type: NpadJoyDeviceType = joy_type
             };
             InHandles {};
@@ -201,11 +202,11 @@ impl IHidServer for HidServer {
         Ok(())
     }
 
-    fn set_npad_joy_assignment_mode_dual(&mut self, aruid: u64, controller: ControllerId) -> Result<()> {
+    fn set_npad_joy_assignment_mode_dual(&mut self, aruid: applet::AppletResourceUserId, controller: ControllerId) -> Result<()> {
         ipc_client_session_send_request_command!([self.session; 124; true] => {
             In {
                 controller: ControllerId = controller,
-                aruid: u64 = aruid
+                aruid: applet::AppletResourceUserId = aruid
             };
             InHandles {};
             InObjects {};
