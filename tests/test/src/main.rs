@@ -49,7 +49,7 @@ pub fn threading_test() -> Result<()> {
 #[no_mangle]
 pub fn main() -> Result<()> {
     if let Err(rc) = threading_test() {
-        assert::assert(assert::AssertMode::SvcBreak, rc);
+        assert::assert(assert::AssertMode::FatalThrow, rc);
     }
 
     Ok(())
@@ -57,5 +57,5 @@ pub fn main() -> Result<()> {
 
 #[panic_handler]
 fn panic_handler(info: &panic::PanicInfo) -> ! {
-    util::on_panic_handler::<log::LmLogger>(info, assert::AssertMode::SvcBreak, ResultCode::from::<assert::ResultAssertionFailed>())
+    util::on_panic_handler::<log::LmLogger>(info, assert::AssertMode::FatalThrow, ResultCode::from::<assert::ResultAssertionFailed>())
 }

@@ -20,7 +20,7 @@ macro_rules! ipc_client_session_send_request_command {
             $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; )*
             $( ctx.in_params.add_handle($in_handle, $in_handle_mode); )*
             $( ctx.in_params.add_object($in_object); )*
-            $( ctx.in_params.add_object($in_session.object_id); )*
+            $( ctx.in_params.add_session($in_session); )*
 
             $crate::ipc::client::write_request_command_on_ipc_buffer(&mut ctx, Some($rq_id), $crate::ipc::DomainCommandType::SendMessage);
             
@@ -80,7 +80,7 @@ macro_rules! ipc_client_session_send_control_command {
             $( ctx.add_buffer($buf, $buf_size, $buf_attr)?; )*
             $( ctx.in_params.add_handle($in_handle, $in_handle_mode); )*
             $( ctx.in_params.add_object($in_object); )*
-            $( ctx.in_params.add_object($in_session.object_id); )*
+            $( ctx.in_params.add_session($in_session); )*
 
             $crate::ipc::client::write_control_command_on_ipc_buffer(&mut ctx, $control_rq_id);
             

@@ -1,0 +1,8 @@
+[package]
+name = "applet-playerselect-launch"
+version = "0.1.0"
+authors = ["XorTroll"]
+edition = "2018"
+
+[dependencies]
+nx = { path = "../../nx" }

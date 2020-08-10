@@ -148,7 +148,9 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         (self.layer_destroy_fn)(self.layer_id, self.application_display_service.clone())?;
 
         self.application_display_service.borrow_mut().close_display(self.display_id)?;
-        Ok(())
+
+        svc::close_handle(self.buffer_event_handle)?;
+        svc::close_handle(self.vsync_event_handle)
     }
 
     pub fn dequeue_buffer(&mut self, is_async: bool) -> Result<(*mut u8, usize, i32, bool, MultiFence)> {

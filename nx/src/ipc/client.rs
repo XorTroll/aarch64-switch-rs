@@ -106,7 +106,8 @@ pub fn write_request_command_on_ipc_buffer(ctx: &mut ipc::CommandContext, reques
             let left_data_size = mem::size_of::<ipc::DataHeader>() as u32 + ctx.in_params.data_size;
             *domain_header = ipc::DomainInDataHeader::new(domain_command_type, ctx.in_params.object_count as u8, left_data_size as u16, ctx.session.object_id, 0);
             data_offset = data_offset.offset(mem::size_of::<ipc::DomainInDataHeader>() as isize);
-            ctx.in_params.objects_offset = data_offset.offset(left_data_size as isize);
+            let objects_offset = data_offset.offset(left_data_size as isize);
+            ipc::write_array_to_buffer(objects_offset, ctx.in_params.object_count as u32, &ctx.in_params.objects);
             data_header = data_offset as *mut ipc::DataHeader;
         }
 

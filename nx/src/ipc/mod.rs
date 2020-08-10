@@ -435,6 +435,12 @@ impl CommandIn {
         }
     }
 
+    pub fn add_session(&mut self, session: Session) {
+        if session.is_domain() {
+            self.add_object(session.object_id);
+        }
+    }
+
     pub fn add_out_pointer_size(&mut self, pointer_size: u16) {
         if self.out_pointer_size_count < MAX_COUNT {
             self.out_pointer_sizes[self.out_pointer_size_count] = pointer_size;
