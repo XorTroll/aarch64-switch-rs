@@ -1,10 +1,11 @@
 use crate::result::*;
+use crate::results;
 use crate::svc;
 use crate::ipc;
 use crate::service;
 use crate::service::SessionObject;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum ErrorCode {
     Success = 0,
@@ -28,57 +29,33 @@ pub enum ErrorCode {
     IoctlFailed = 0x3000F,
 }
 
-pub const RESULT_SUBMODULE: u32 = 7;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultErrorCodeInvalid: 1,
-    ResultErrorCodeNotImplemented: 2,
-    ResultErrorCodeNotSupported: 3,
-    ResultErrorCodeNotInitialized: 4,
-    ResultErrorCodeInvalidParameter: 5,
-    ResultErrorCodeTimeOut: 6,
-    ResultErrorCodeInsufficientMemory: 7,
-    ResultErrorCodeReadOnlyAttribute: 8,
-    ResultErrorCodeInvalidState: 9,
-    ResultErrorCodeInvalidAddress: 10,
-    ResultErrorCodeInvalidSize: 11,
-    ResultErrorCodeInvalidValue: 12,
-    ResultErrorCodeAlreadyAllocated: 13,
-    ResultErrorCodeBusy: 14,
-    ResultErrorCodeResourceError: 15,
-    ResultErrorCodeCountMismatch: 16,
-    ResultErrorCodeSharedMemoryTooSmall: 17,
-    ResultErrorCodeFileOperationFailed: 18,
-    ResultErrorCodeIoctlFailed: 19
-});
-
 #[allow(unreachable_patterns)]
 pub fn convert_error_code(err: ErrorCode) -> Result<()> {
     match err {
         ErrorCode::Success => Ok(()),
-        ErrorCode::NotImplemented => Err(ResultCode::from::<ResultErrorCodeNotImplemented>()),
-        ErrorCode::NotSupported => Err(ResultCode::from::<ResultErrorCodeNotSupported>()),
-        ErrorCode::NotInitialized => Err(ResultCode::from::<ResultErrorCodeNotInitialized>()),
-        ErrorCode::InvalidParameter => Err(ResultCode::from::<ResultErrorCodeInvalidParameter>()),
-        ErrorCode::TimeOut => Err(ResultCode::from::<ResultErrorCodeTimeOut>()),
-        ErrorCode::InsufficientMemory => Err(ResultCode::from::<ResultErrorCodeInsufficientMemory>()),
-        ErrorCode::ReadOnlyAttribute => Err(ResultCode::from::<ResultErrorCodeReadOnlyAttribute>()),
-        ErrorCode::InvalidState => Err(ResultCode::from::<ResultErrorCodeInvalidState>()),
-        ErrorCode::InvalidAddress => Err(ResultCode::from::<ResultErrorCodeInvalidAddress>()),
-        ErrorCode::InvalidSize => Err(ResultCode::from::<ResultErrorCodeInvalidSize>()),
-        ErrorCode::InvalidValue => Err(ResultCode::from::<ResultErrorCodeInvalidValue>()),
-        ErrorCode::AlreadyAllocated => Err(ResultCode::from::<ResultErrorCodeAlreadyAllocated>()),
-        ErrorCode::Busy => Err(ResultCode::from::<ResultErrorCodeBusy>()),
-        ErrorCode::ResourceError => Err(ResultCode::from::<ResultErrorCodeResourceError>()),
-        ErrorCode::CountMismatch => Err(ResultCode::from::<ResultErrorCodeCountMismatch>()),
-        ErrorCode::SharedMemoryTooSmall => Err(ResultCode::from::<ResultErrorCodeSharedMemoryTooSmall>()),
-        ErrorCode::FileOperationFailed => Err(ResultCode::from::<ResultErrorCodeFileOperationFailed>()),
-        ErrorCode::IoctlFailed => Err(ResultCode::from::<ResultErrorCodeIoctlFailed>()),
-        _ => Err(ResultCode::from::<ResultErrorCodeInvalid>()),
+        ErrorCode::NotImplemented => Err(results::lib::gpu::ResultNvErrorCodeNotImplemented::make()),
+        ErrorCode::NotSupported => Err(results::lib::gpu::ResultNvErrorCodeNotSupported::make()),
+        ErrorCode::NotInitialized => Err(results::lib::gpu::ResultNvErrorCodeNotInitialized::make()),
+        ErrorCode::InvalidParameter => Err(results::lib::gpu::ResultNvErrorCodeInvalidParameter::make()),
+        ErrorCode::TimeOut => Err(results::lib::gpu::ResultNvErrorCodeTimeOut::make()),
+        ErrorCode::InsufficientMemory => Err(results::lib::gpu::ResultNvErrorCodeInsufficientMemory::make()),
+        ErrorCode::ReadOnlyAttribute => Err(results::lib::gpu::ResultNvErrorCodeReadOnlyAttribute::make()),
+        ErrorCode::InvalidState => Err(results::lib::gpu::ResultNvErrorCodeInvalidState::make()),
+        ErrorCode::InvalidAddress => Err(results::lib::gpu::ResultNvErrorCodeInvalidAddress::make()),
+        ErrorCode::InvalidSize => Err(results::lib::gpu::ResultNvErrorCodeInvalidSize::make()),
+        ErrorCode::InvalidValue => Err(results::lib::gpu::ResultNvErrorCodeInvalidValue::make()),
+        ErrorCode::AlreadyAllocated => Err(results::lib::gpu::ResultNvErrorCodeAlreadyAllocated::make()),
+        ErrorCode::Busy => Err(results::lib::gpu::ResultNvErrorCodeBusy::make()),
+        ErrorCode::ResourceError => Err(results::lib::gpu::ResultNvErrorCodeResourceError::make()),
+        ErrorCode::CountMismatch => Err(results::lib::gpu::ResultNvErrorCodeCountMismatch::make()),
+        ErrorCode::SharedMemoryTooSmall => Err(results::lib::gpu::ResultNvErrorCodeSharedMemoryTooSmall::make()),
+        ErrorCode::FileOperationFailed => Err(results::lib::gpu::ResultNvErrorCodeFileOperationFailed::make()),
+        ErrorCode::IoctlFailed => Err(results::lib::gpu::ResultNvErrorCodeIoctlFailed::make()),
+        _ => Err(results::lib::gpu::ResultNvErrorCodeInvalid::make()),
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum IoctlId {
     NvMapCreate = 0xC0080101,

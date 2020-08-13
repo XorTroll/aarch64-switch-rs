@@ -1,3 +1,5 @@
+use crate::result::*;
+use crate::results;
 use crate::svc;
 use crate::mem;
 use crate::dynamic;
@@ -6,11 +8,9 @@ use crate::util;
 use crate::hbl;
 use crate::thread;
 use crate::vmem;
-use crate::result::*;
+
 use core::option;
 use core::ptr;
-
-global_asm!(include_str!("crt0.s"));
 
 // These functions must be implemented by any executable homebrew project using this crate
 extern "Rust" {
@@ -83,7 +83,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
 
     // Call main() and get its result code
     let rc = match main() {
-        Ok(()) => ResultCode::from::<ResultSuccess>(),
+        Ok(()) => ResultSuccess::make(),
         Err(rc) => rc,
     };
 
@@ -93,7 +93,7 @@ unsafe fn __nx_crt0_entry(abi_ptr: *const hbl::AbiConfigEntry, raw_main_thread_h
 
 #[no_mangle]
 unsafe fn __nx_crt0_exception_entry(_error_desc: u32, _stack_top: *mut u8) {
-    svc::return_from_exception(ResultCode::from::<svc::ResultUnhandledException>());
+    svc::return_from_exception(results::os::ResultUnhandledException::make());
 }
 
 pub fn exit(rc: ResultCode) -> ! {

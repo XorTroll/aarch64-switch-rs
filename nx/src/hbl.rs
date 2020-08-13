@@ -1,6 +1,6 @@
 use enumflags2::BitFlags;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum AbiConfigEntryKey {
     EndOfList = 0,
@@ -20,13 +20,13 @@ pub enum AbiConfigEntryKey {
     HosVersion = 16
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum AbiConfigEntryFlags {
     Mandatory = 0b1,
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum AbiConfigAppletFlags {
     ApplicationOverride = 0b1,

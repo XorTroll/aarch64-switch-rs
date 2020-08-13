@@ -1,167 +1,187 @@
-.macro DEF_SVC name
-	.section .text.\name, "ax", %progbits
-	.global \name
-	.type \name, %function
-	.align 2
-	.cfi_startproc
-\name:
-.endm
-
-.macro END_DEF_SVC
-	.cfi_endproc
-.endm
-
-DEF_SVC __nx_svc_set_heap_size
+FN_START __nx_svc_set_heap_size
 	str x0, [sp, #-16]!
 	svc 0x1
 	ldr x2, [sp], #16
 	str x1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_set_memory_attribute
+FN_START __nx_svc_set_memory_attribute
 	svc 0x3
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_query_memory
+FN_START __nx_svc_query_memory
 	str x1, [sp, #-16]!
 	svc 0x6
 	ldr x2, [sp], #16
 	str w1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_exit_process
+FN_START __nx_svc_exit_process
 	svc 0x7
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_create_thread
+FN_START __nx_svc_create_thread
 	str x0, [sp, #-16]!
 	svc 0x8
 	ldr x2, [sp], #16
 	str w1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_start_thread
+FN_START __nx_svc_start_thread
 	svc 0x9
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_exit_thread
+FN_START __nx_svc_exit_thread
 	svc 0xA
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_sleep_thread
+FN_START __nx_svc_sleep_thread
 	svc 0xB
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_get_thread_priority
+FN_START __nx_svc_get_thread_priority
 	str x0, [sp, #-16]!
 	svc 0xC
 	ldr x2, [sp], #16
 	str w1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_map_shared_memory
+FN_START __nx_svc_map_shared_memory
 	svc 0x13
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_unmap_shared_memory
+FN_START __nx_svc_unmap_shared_memory
 	svc 0x14
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_create_transfer_memory
+FN_START __nx_svc_create_transfer_memory
 	str x0, [sp, #-16]!
 	svc 0x15
 	ldr x2, [sp], #16
 	str w1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_close_handle
+FN_START __nx_svc_close_handle
 	svc 0x16
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_reset_signal
+FN_START __nx_svc_reset_signal
 	svc 0x17
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_wait_synchronization
+FN_START __nx_svc_wait_synchronization
 	str x0, [sp, #-16]!
 	svc 0x18
 	ldr x2, [sp], #16
 	str w1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_arbitrate_lock
+FN_START __nx_svc_arbitrate_lock
 	svc 0x1A
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_arbitrate_unlock
+FN_START __nx_svc_arbitrate_unlock
 	svc 0x1B
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_connect_to_named_port
+FN_START __nx_svc_connect_to_named_port
 	str x0, [sp, #-16]!
 	svc 0x1F
 	ldr x2, [sp], #16
 	str w1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_send_sync_request
+FN_START __nx_svc_send_sync_request
 	svc 0x21
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_get_process_id
+FN_START __nx_svc_get_process_id
 	str x0, [sp, #-16]!
 	svc 0x24
 	ldr x2, [sp], #16
 	str x1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_get_thread_id
+FN_START __nx_svc_get_thread_id
 	str x0, [sp, #-16]!
 	svc 0x25
 	ldr x2, [sp], #16
 	str x1, [x2]
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_break
+FN_START __nx_svc_break
 	svc 0x26
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_output_debug_string
+FN_START __nx_svc_output_debug_string
 	svc 0x27
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_return_from_exception
+FN_START __nx_svc_return_from_exception
 	svc 0x28
 	ret
-END_DEF_SVC
+FN_END
 
-DEF_SVC __nx_svc_get_info
+FN_START __nx_svc_get_info
 	str x0, [sp, #-16]!
 	svc 0x29
 	ldr x2, [sp], #16
 	str x1, [x2]
 	ret
-END_DEF_SVC
+FN_END
+
+FN_START __nx_svc_create_session
+	stp x0, x1, [sp, #-16]!
+	svc 0x40
+	ldp x3, x4, [sp], #16
+	str w1, [x3]
+	str w2, [x4]
+	ret
+FN_END
+
+FN_START __nx_svc_accept_session
+	str x0, [sp, #-16]!
+	svc 0x41
+	ldr x2, [sp], #16
+	str w1, [x2]
+	ret
+FN_END
+
+FN_START __nx_svc_reply_and_receive
+	str x0, [sp, #-16]!
+	svc 0x43
+	ldr x2, [sp], #16
+	str w1, [x2]
+	ret
+FN_END
+
+FN_START __nx_svc_manage_named_port
+	str x0, [sp, #-16]!
+	svc 0x71
+	ldr x2, [sp], #16
+	str w1, [x2]
+	ret
+FN_END

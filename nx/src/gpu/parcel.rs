@@ -1,4 +1,5 @@
 use crate::result::*;
+use crate::results;
 use core::mem;
 use core::ptr;
 
@@ -43,15 +44,6 @@ pub struct ParcelData {
     pub zero_2: [u8; 8],
 }
 
-pub const RESULT_SUBMODULE: u32 = 9;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultNotEnoughReadSpace: 1,
-    ResultNotEnoughWriteSpace: 2,
-    ResultFdsNotSupported: 3,
-    ResultReadSizeMismatch: 4
-});
-
 pub struct Parcel {
     payload: ParcelPayload,
     read_offset: usize,
@@ -64,7 +56,7 @@ impl Parcel {
     }
 
     pub fn read_raw_unaligned(&mut self, out_data: *mut u8, data_size: usize) -> Result<()> {
-        result_return_if!((self.read_offset + data_size) > PAYLOAD_SIZE, ResultNotEnoughReadSpace);
+        result_return_if!((self.read_offset + data_size) > PAYLOAD_SIZE, results::lib::gpu::ResultParcelNotEnoughReadSpace);
 
         unsafe {
             ptr::copy((&mut self.payload.payload as *mut _ as *mut u8).offset(self.read_offset as isize), out_data, data_size);
@@ -78,7 +70,7 @@ impl Parcel {
     }
 
     pub fn write_raw_unaligned(&mut self, data: *const u8, data_size: usize) -> Result<()> {
-        result_return_if!((self.write_offset + data_size) > PAYLOAD_SIZE, ResultNotEnoughWriteSpace);
+        result_return_if!((self.write_offset + data_size) > PAYLOAD_SIZE, results::lib::gpu::ResultParcelNotEnoughWriteSpace);
 
         unsafe {
             ptr::copy(data, (&mut self.payload.payload as *mut _ as *mut u8).offset(self.write_offset as isize), data_size);
@@ -89,7 +81,7 @@ impl Parcel {
 
     pub fn write_reserve_raw(&mut self, data_size: usize) -> Result<*mut u8> {
         let actual_size = (data_size + 3) & !3;
-        result_return_if!((self.write_offset + actual_size) > PAYLOAD_SIZE, ResultNotEnoughWriteSpace);
+        result_return_if!((self.write_offset + actual_size) > PAYLOAD_SIZE, results::lib::gpu::ResultParcelNotEnoughWriteSpace);
 
         let buf = unsafe { (&mut self.payload.payload as *mut _ as *mut u8).offset(self.write_offset as isize) };
         self.write_offset += actual_size;
@@ -148,7 +140,7 @@ impl Parcel {
     pub fn read_sized_raw(&mut self, out_data: *mut u8) -> Result<usize> {
         let len = self.read::<i32>()? as usize;
         let fd_count = self.read::<i32>()?;
-        result_return_unless!(fd_count == 0, ResultFdsNotSupported);
+        result_return_unless!(fd_count == 0, results::lib::gpu::ResultParcelFdsNotSupported);
 
         self.read_raw(out_data, len)?;
         Ok(len)
@@ -159,7 +151,7 @@ impl Parcel {
             mem::zeroed()
         };
         let len = self.read_sized_raw(&mut t as *mut T as *mut u8)?;
-        result_return_unless!(len == mem::size_of::<T>(), ResultReadSizeMismatch);
+        result_return_unless!(len == mem::size_of::<T>(), results::lib::gpu::ResultParcelReadSizeMismatch);
         Ok(t)
     }
 

@@ -1,17 +1,4 @@
-.macro CODE_BEGIN name
-	.section .text.\name, "ax", %progbits
-	.global \name
-	.type \name, %function
-	.align 2
-	.cfi_startproc
-\name:
-.endm
-
-.macro CODE_END
-	.cfi_endproc
-.endm
-
-CODE_BEGIN __nx_mem_flush_data_cache
+FN_START __nx_mem_flush_data_cache
 	add x1, x1, x0
 	mrs x8, CTR_EL0
 	lsr x8, x8, #16
@@ -30,4 +17,4 @@ data_cache_flush_l0:
 
 	dsb sy
 	ret
-CODE_END
+FN_END

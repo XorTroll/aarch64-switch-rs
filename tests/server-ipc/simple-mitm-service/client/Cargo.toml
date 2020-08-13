@@ -1,8 +1,8 @@
 [package]
-name = "test"
+name = "client"
 version = "0.1.0"
 authors = ["XorTroll"]
 edition = "2018"
 
 [dependencies]
-nx = { path = "../../nx" }
+nx = { path = "../../../../nx" }

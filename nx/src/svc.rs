@@ -3,9 +3,7 @@ use core::ptr;
 use core::mem;
 use enumflags2::BitFlags;
 
-global_asm!(include_str!("svc.s"));
-
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum BreakReason {
     Panic = 0,
@@ -19,7 +17,7 @@ pub enum BreakReason {
     NotificationOnlyFlag = 0x80000000
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum MemoryState {
     Free = 0x0,
@@ -46,7 +44,7 @@ pub enum MemoryState {
     CodeOut = 0x15
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum MemoryPermission {
     Read = 0b1,
@@ -55,7 +53,7 @@ pub enum MemoryPermission {
     DontCare = 0b10000000000000000000000000000,
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum MemoryAttribute {
     Locked = 0b1,
@@ -77,7 +75,7 @@ pub struct MemoryInfo {
     pub pad: u32,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum InfoId {
     CoreMask = 0,
@@ -411,10 +409,55 @@ pub fn get_info(id: InfoId, handle: Handle, sub_id: u64) -> Result<u64> {
     }
 }
 
-result_define_group!(1 => {
-    ResultInvalidSize: 101,
-    ResultInvalidAddress: 102,
-    ResultInvalidHandle: 114,
-    ResultUnhandledException: 124,
-    ResultFatalException: 128
-});
+pub fn create_session(is_light: bool, unk_name: u64) -> Result<(Handle, Handle)> {
+    extern "C" {
+        fn __nx_svc_create_session(out_server_handle: *mut Handle, out_client_handle: *mut Handle, is_light: bool, unk_name: u64) -> ResultCode;
+    }
+
+    unsafe {
+        let mut server_handle: Handle = 0;
+        let mut client_handle: Handle = 0;
+
+        let rc = __nx_svc_create_session(&mut server_handle, &mut client_handle, is_light, unk_name);
+        wrap(rc, (server_handle, client_handle))
+    }
+}
+
+pub fn accept_session(handle: Handle) -> Result<Handle> {
+    extern "C" {
+        fn __nx_svc_accept_session(out_session_handle: *mut Handle, handle: Handle) -> ResultCode;
+    }
+
+    unsafe {
+        let mut session_handle: Handle = 0;
+        
+        let rc = __nx_svc_accept_session(&mut session_handle, handle);
+        wrap(rc, session_handle)
+    }
+}
+
+pub fn reply_and_receive(handles: *const Handle, handle_count: u32, reply_target: Handle, timeout: i64) -> Result<i32> {
+    extern "C" {
+        fn __nx_svc_reply_and_receive(out_index: *mut i32, handles: *const Handle, handle_count: u32, reply_target: Handle, timeout: i64) -> ResultCode;
+    }
+
+    unsafe {
+        let mut index: i32 = 0;
+
+        let rc = __nx_svc_reply_and_receive(&mut index, handles, handle_count, reply_target, timeout);
+        wrap(rc, index)
+    }
+}
+
+pub fn manage_named_port(name: Address, max_sessions: i32) -> Result<Handle> {
+    extern "C" {
+        fn __nx_svc_manage_named_port(out_handle: *mut Handle, name: Address, max_sessions: i32) -> ResultCode;
+    }
+
+    unsafe {
+        let mut handle: Handle = 0;
+
+        let rc = __nx_svc_manage_named_port(&mut handle, name, max_sessions);
+        wrap(rc, handle)
+    }
+}

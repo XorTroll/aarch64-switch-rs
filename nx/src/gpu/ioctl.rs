@@ -1,7 +1,7 @@
 use crate::service::nv;
 use super::*;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum IoctlFd {
     NvHost,
@@ -48,7 +48,7 @@ impl Ioctl for NvMapFromId {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum AllocFlags {
     ReadOnly,

@@ -13,7 +13,7 @@ use crate::vmem;
 use crate::service;
 use core::mem as cmem;
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u64)]
 pub enum Key {
     A = 0b1,
@@ -88,7 +88,7 @@ pub struct JoystickPosition {
     pub y: u32
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u64)]
 pub enum ConnectionState {
     Connected = 0b1,

@@ -4,7 +4,7 @@
 macro_rules! diag_assert {
     ($mode:expr, $cond:expr) => {
         if !$cond {
-            $crate::diag::assert::assert($mode, $crate::result::ResultCode::from::<$crate::diag::assert::ResultAssertionFailed>());
+            $crate::diag::assert::assert($mode, $crate::results::lib::assert::ResultAssertionFailed::make());
         }
     };
 }
@@ -71,6 +71,38 @@ macro_rules! diag_log_assert {
                 logger.log(&metadata);
 
                 $crate::diag::assert::assert($assert_mode, $crate::result::ResultCode::new(0x9BA1));
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! diag_log_result_assert {
+    ($logger:ty, $assert_mode:expr => $rc:expr) => {
+        {
+            fn f() {}
+            fn type_name_of<T>(_: T) -> &'static str {
+                core::any::type_name::<T>()
+            }
+            let name = type_name_of(f);
+            // `3` is the length of the `::f`.
+            let fn_name = &name[..name.len() - 3];
+
+            if $rc.is_success() {
+                let msg = format!("Result assertion suceeded -> {0} - {0:?}", $rc);
+
+                let mut logger = <$logger>::new();
+                let metadata = $crate::diag::log::LogMetadata::new($crate::diag::log::LogSeverity::Info, false, msg, file!(), fn_name, line!());
+                logger.log(&metadata);
+            }
+            else {
+                let msg = format!("Result assertion failed ({0}) -> {1} - {1:?}", stringify!($assert_mode), $rc);
+
+                let mut logger = <$logger>::new();
+                let metadata = $crate::diag::log::LogMetadata::new($crate::diag::log::LogSeverity::Fatal, false, msg, file!(), fn_name, line!());
+                logger.log(&metadata);
+
+                $crate::diag::assert::assert($assert_mode, $rc);
             }
         }
     };

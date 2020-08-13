@@ -1,11 +1,22 @@
 #![no_std]
+#![allow(incomplete_features)]
 #![feature(llvm_asm)]
 #![feature(global_asm)]
 #![feature(alloc_error_handler)]
 #![feature(const_fn)]
+#![feature(const_generics)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(const_raw_ptr_deref)]
+#![feature(specialization)]
 #![macro_use]
+
+// Required assembly bits
+
+global_asm!(include_str!("asm.s"));
+global_asm!(include_str!("crt0.s"));
+global_asm!(include_str!("arm.s"));
+global_asm!(include_str!("mem.s"));
+global_asm!(include_str!("svc.s"));
 
 #[macro_use]
 extern crate alloc;
@@ -14,6 +25,8 @@ extern crate alloc;
 pub mod macros;
 
 pub mod result;
+
+pub mod results;
 
 pub mod util;
 

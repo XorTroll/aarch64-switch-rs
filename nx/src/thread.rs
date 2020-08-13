@@ -8,7 +8,7 @@ use core::ptr;
 
 pub type ThreadName = [u8; 0x20];
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum ThreadState {
     NotInitialized = 0,
@@ -127,7 +127,7 @@ impl Thread {
     }
 
     pub fn get_name(&mut self) -> Result<&'static str> {
-        util::get_str_from_pointer(&mut self.name as *mut _ as *mut u8, 0x20)
+        util::get_str_from_pointer(&mut self.name as *mut _ as *mut u8, self.name.len())
     }
 
     pub fn get_handle(&self) -> svc::Handle {

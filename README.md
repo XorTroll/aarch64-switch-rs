@@ -29,10 +29,6 @@ Many things still have to be implemented (**nx** is basically a work-in-progress
 
 - Finish bits of CRT0 (implement all hbl ABI parsing, etc.)
 
-- Implement applet services
-
-- Implement server-side IPC (pretty ambicious TODO)
-
 - Secondary crate/lib for UI, some 2D framework
 
 - Thread-local variable support?
@@ -43,7 +39,7 @@ Many things still have to be implemented (**nx** is basically a work-in-progress
 
 - RomFs support
 
-- NSO specific test (the only thing different aside from code would be the build script...)
+- Documentation
 
 ## Information
 
@@ -51,27 +47,17 @@ Many things still have to be implemented (**nx** is basically a work-in-progress
 
 - Result module: `430` (`2430-****`)
 
-- Result submodules (can be found as consts named `nx::<module_name>::RESULT_SUBMODULE`):
+- Result submodules (can be found as consts named `nx::results::lib::<module_name>::RESULT_SUBMODULE`):
 
   - Dynamic: `1` (`2430-01**`)
 
-  - ELF-related operations: `2` (`2430-02**`)
+  - ELF-related: `2` (`2430-02**`)
 
   - Util: `3` (`2430-03**`)
 
-  - Common IPC: `4` (`2430-04**`)
+  - Assert: `4` (`2430-04**`)
 
-  - Client-side IPC: `5` (`2430-05**`)
-
-  - Assert: `6` (`2430-06**`)
-
-  - NV error codes: `7` (`2430-07**`)
-
-  - GPU (binder): `8` (`2430-08**`)
-
-  - GPU (parcel): `9` (`2430-09**`)
-
-  - Memory: `10` (`2430-10**`)
+  - GPU: `5` (`2430-08**`)
 
 ## Credits
 

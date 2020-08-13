@@ -1,14 +1,8 @@
 use crate::result::*;
+use crate::results;
 use core::ptr;
 
-pub const RESULT_SUBMODULE: u32 = 2;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultDuplicatedDtEntry: 1,
-    ResultMissingDtEntry: 2
-});
-
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(i64)]
 pub enum Tag {
     Invalid = 0,
@@ -33,7 +27,7 @@ pub enum Tag {
     RelaCount = 0x6FFFFFF9
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum RelocationType {
     AArch64Abs64 = 257,
@@ -57,12 +51,12 @@ impl Dyn {
         
             while (*self_ptr).tag != Tag::Invalid {
                 if (*self_ptr).tag == tag {
-                    result_return_unless!(found.is_null(), ResultDuplicatedDtEntry);
+                    result_return_unless!(found.is_null(), results::lib::elf::ResultDuplicatedDtEntry);
                     found = &(*self_ptr).val_ptr;
                 }
                 self_ptr = self_ptr.offset(1);
             }
-            result_return_if!(found.is_null(), ResultMissingDtEntry);
+            result_return_if!(found.is_null(), results::lib::elf::ResultMissingDtEntry);
 
             Ok(*found)
         }

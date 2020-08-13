@@ -1,20 +1,24 @@
-use crate::svc;
 use crate::result::*;
+use crate::results;
+use crate::svc;
 use crate::thread;
 use core::ptr;
+use core::mem;
 use core::fmt;
 use enumflags2::BitFlags;
 
-#[macro_use]
-pub mod client;
-
-pub const RESULT_SUBMODULE: u32 = 4;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultNoItemsLeft: 1
-});
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum ControlRequestId {
+    ConvertCurrentObjectToDomain = 0,
+    CopyFromCurrentDomain = 1,
+    CloneCurrentObject = 2,
+    QueryPointerBufferSize = 3,
+    CloneCurrentObjectEx = 4
+}
 
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub struct Session {
     pub handle: svc::Handle,
     pub object_id: u32,
@@ -43,7 +47,7 @@ impl Session {
     }
 
     pub fn convert_current_object_to_domain(&mut self) -> Result<()> {
-        ipc_client_session_send_control_command!([*self; client::ControlRequestId::ConvertCurrentObjectToDomain; false] => {
+        ipc_client_session_send_control_command!([*self; ControlRequestId::ConvertCurrentObjectToDomain; false] => {
             In {};
             InHandles {};
             InObjects {};
@@ -61,7 +65,7 @@ impl Session {
 
     pub fn query_pointer_buffer_size(&mut self) -> Result<u16> {
         let pointer_buf_size: u16;
-        ipc_client_session_send_control_command!([*self; client::ControlRequestId::QueryPointerBufferSize; false] => {
+        ipc_client_session_send_control_command!([*self; ControlRequestId::QueryPointerBufferSize; false] => {
             In {};
             InHandles {};
             InObjects {};
@@ -103,14 +107,14 @@ impl fmt::Debug for Session {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum HandleMode {
     Copy = 0,
     Move = 1
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum BufferFlags {
     Normal = 0,
@@ -206,7 +210,7 @@ impl ReceiveStaticDescriptor {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u16)]
 pub enum CommandType {
     Invalid = 0,
@@ -231,7 +235,7 @@ impl CommandHeader {
         Self { bits_1: 0, bits_2: 0 }
     }
 
-    pub const fn make_receive_static_type(receive_static_count: u32) -> u32 {
+    pub const fn encode_receive_static_type(receive_static_count: u32) -> u32 {
         let mut static_type: u32 = 0;
         if receive_static_count > 0 {
             static_type += 2;
@@ -240,6 +244,19 @@ impl CommandHeader {
             }
         }
         static_type
+    }
+
+    pub const fn decode_receive_static_type(receive_static_type: u32) -> u32 {
+        let mut count: u32 = 0;
+        if receive_static_type > 0 {
+            if receive_static_type == 2 {
+                count = 0xFF;
+            }
+            else if receive_static_type > 2 {
+                count = receive_static_type - 2;
+            }
+        }
+        count
     }
 
     pub const fn new(command_type: CommandType, send_static_count: u32, send_buffer_count: u32, receive_buffer_count: u32, exchange_buffer_count: u32, data_word_count: u32, receive_static_count: u32, has_special_header: bool) -> Self {
@@ -252,14 +269,41 @@ impl CommandHeader {
 
         let mut bits_2: u32 = 0;
         write_bits!(0, 9, bits_2, data_word_count);
-        write_bits!(10, 13, bits_2, Self::make_receive_static_type(receive_static_count));
+        write_bits!(10, 13, bits_2, Self::encode_receive_static_type(receive_static_count));
         write_bits!(31, 31, bits_2, has_special_header as u32);
 
         Self { bits_1: bits_1, bits_2: bits_2 }
     }
 
+    pub const fn get_command_type(&self) -> CommandType {
+        let raw_type = read_bits!(0, 15, self.bits_1);
+        unsafe {
+            mem::transmute(raw_type as u16)
+        }
+    }
+
     pub const fn get_send_static_count(&self) -> u32 {
         read_bits!(16, 19, self.bits_1)
+    }
+
+    pub const fn get_send_buffer_count(&self) -> u32 {
+        read_bits!(20, 23, self.bits_1)
+    }
+
+    pub const fn get_receive_buffer_count(&self) -> u32 {
+        read_bits!(24, 27, self.bits_1)
+    }
+
+    pub const fn get_exchange_buffer_count(&self) -> u32 {
+        read_bits!(28, 31, self.bits_1)
+    }
+
+    pub const fn get_data_word_count(&self) -> u32 {
+        read_bits!(0, 9, self.bits_2)
+    }
+
+    pub const fn get_receive_static_count(&self) -> u32 {
+        Self::decode_receive_static_type(read_bits!(10, 13, self.bits_2))
     }
 
     pub const fn get_has_special_header(&self) -> bool {
@@ -319,10 +363,12 @@ impl DataHeader {
     }
 }
 
+pub const DATA_PADDING: u32 = 16;
+
 pub const IN_DATA_HEADER_MAGIC: u32 = 0x49434653;
 pub const OUT_DATA_HEADER_MAGIC: u32 = 0x4F434653;
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum DomainCommandType {
     Invalid = 0,
@@ -370,7 +416,7 @@ impl DomainOutDataHeader {
     }
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum BufferAttribute {
     In = 0b1,
@@ -447,6 +493,15 @@ impl CommandIn {
             self.out_pointer_size_count += 1;
         }
     }
+
+    pub fn get_data_at<T: Copy>(&self, offset: usize) -> Result<T> {
+        result_return_if!((offset + mem::size_of::<T>()) as u32 > self.data_size, 0xBE3F);
+
+        unsafe {
+            let ptr = self.data_offset.offset(offset as isize) as *const T;
+            Ok(ptr.read_volatile())
+        }
+    }
 }
 
 pub struct CommandOut {
@@ -473,7 +528,7 @@ impl CommandOut {
             self.copy_handle_count -= 1;
             return Ok(self.copy_handles[self.copy_handle_count]);
         }
-        Err(ResultCode::from::<ResultNoItemsLeft>())
+        Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
     pub fn pop_move_handle(&mut self) -> Result<svc::Handle> {
@@ -481,7 +536,7 @@ impl CommandOut {
             self.move_handle_count -= 1;
             return Ok(self.move_handles[self.move_handle_count]);
         }
-        Err(ResultCode::from::<ResultNoItemsLeft>())
+        Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
     pub fn pop_handle(&mut self, mode: HandleMode) -> Result<svc::Handle> {
@@ -496,10 +551,21 @@ impl CommandOut {
             self.object_count -= 1;
             return Ok(self.objects[self.object_count]);
         }
-        Err(ResultCode::from::<ResultNoItemsLeft>())
+        Err(results::cmif::ResultInvalidOutObjectCount::make())
+    }
+
+    pub fn set_data_at<T: Copy>(&self, offset: usize, t: T) -> Result<()> {
+        result_return_if!((offset + mem::size_of::<T>()) as u32 > self.data_size, 0xBE3F);
+
+        unsafe {
+            let ptr = self.data_offset.offset(offset as isize) as *mut T;
+            *ptr = t;
+            Ok(())
+        }
     }
 }
 
+#[repr(C)]
 pub struct CommandContext {
     pub session: Session,
     pub in_params: CommandIn,
@@ -513,7 +579,7 @@ pub struct CommandContext {
     receive_buffers: [BufferDescriptor; MAX_COUNT],
     receive_buffer_count: usize,
     exchange_buffers: [BufferDescriptor; MAX_COUNT],
-    exchange_buffer_count: usize,
+    exchange_buffer_count: usize
 }
 
 impl CommandContext {
@@ -640,12 +706,14 @@ impl CommandContext {
     }
 }
 
+#[inline(always)]
 pub fn get_ipc_buffer() -> *mut u8 {
     unsafe {
         &mut (*thread::get_thread_local_storage()).ipc_buffer as *mut _ as *mut u8
     }
 }
 
+#[inline(always)]
 pub fn read_array_from_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &mut [T; MAX_COUNT]) -> *mut u8 {
     unsafe {
         let tmp_buffer = buffer as *mut T;
@@ -659,6 +727,7 @@ pub fn read_array_from_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &mut 
     }
 }
 
+#[inline(always)]
 pub fn write_array_to_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &[T; MAX_COUNT]) -> *mut u8 {
     unsafe {
         let temp_buffer = buffer as *mut T;
@@ -672,9 +741,148 @@ pub fn write_array_to_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &[T; M
     }
 }
 
+#[inline(always)]
 pub const fn get_aligned_data_offset(data_words_offset: *mut u8, base_offset: *mut u8) -> *mut u8 {
     unsafe {
         let data_offset = (data_words_offset as usize - base_offset as usize + 15) & !15;
         (data_offset + base_offset as usize) as *mut u8
     }
 }
+
+// IPC command argument types
+
+pub struct Buffer<const A: BufferAttribute> {
+    pub buf: *const u8,
+    pub size: usize
+}
+
+impl<const A: BufferAttribute> Buffer<A> {
+    pub const fn from_const<T>(buf: *const T, size: usize) -> Self {
+        Self { buf: buf as *const u8, size: size }
+    }
+
+    pub const fn from_mut<T>(buf: *mut T, size: usize) -> Self {
+        Self { buf: buf as *const u8, size: size }
+    }
+
+    pub const fn from_var<T>(var: &T) -> Self {
+        Self { buf: var as *const T as *const u8, size: mem::size_of::<T>() }
+    }
+
+    pub const fn get_as<T>(&self) -> &'static T {
+        unsafe {
+            &*(self.buf as *const T)
+        }
+    }
+}
+
+pub struct Handle<const M: HandleMode> {
+    handle: svc::Handle
+}
+
+impl<const M: HandleMode> Handle<M> {
+    pub const fn from(handle: svc::Handle) -> Self {
+        Self { handle: handle }
+    }
+
+    pub const fn get_value(&self) -> svc::Handle {
+        self.handle
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[repr(u8)]
+pub enum CommandParameter {
+    Raw,
+    Buffer,
+    Handle,
+    Session
+}
+
+pub trait CommandParameterDeserialize<T> {
+    fn deserialize() -> CommandParameter;
+}
+
+pub struct CommandParameterDeserializer<T> {
+    phantom: core::marker::PhantomData<T>
+}
+
+impl<T> CommandParameterDeserialize<T> for CommandParameterDeserializer<T> {
+    default fn deserialize() -> CommandParameter {
+        CommandParameter::Raw
+    }
+}
+
+impl<const A: BufferAttribute> CommandParameterDeserialize<Buffer<A>> for CommandParameterDeserializer<Buffer<A>> {
+    default fn deserialize() -> CommandParameter {
+        CommandParameter::Buffer
+    }
+}
+
+impl<const M: HandleMode> CommandParameterDeserialize<Handle<M>> for CommandParameterDeserializer<Handle<M>> {
+    default fn deserialize() -> CommandParameter {
+        CommandParameter::Handle
+    }
+}
+
+impl CommandParameterDeserialize<Session> for CommandParameterDeserializer<Session> {
+    default fn deserialize() -> CommandParameter {
+        CommandParameter::Session
+    }
+}
+
+pub struct DataWalker {
+    ptr: *mut u8,
+    cur_offset: isize
+}
+
+impl DataWalker {
+    pub fn new(ptr: *mut u8) -> Self {
+        Self { ptr: ptr, cur_offset: 0 }
+    }
+
+    pub fn advance<T: Copy>(&mut self) {
+        let align_of_type = core::mem::align_of::<T>() as isize;
+        self.cur_offset += align_of_type - 1;
+        self.cur_offset -= self.cur_offset % align_of_type;
+        self.cur_offset += core::mem::size_of::<T>() as isize;
+    }
+
+    pub fn advance_get<T: Copy>(&mut self) -> T {
+        unsafe {
+            let align_of_type = core::mem::align_of::<T>() as isize;
+            self.cur_offset += align_of_type - 1;
+            self.cur_offset -= self.cur_offset % align_of_type;
+            let offset = self.cur_offset;
+            self.cur_offset += core::mem::size_of::<T>() as isize;
+
+            let data_ref = self.ptr.offset(offset) as *const T;
+            data_ref.read_volatile()
+        }
+    }
+
+    pub fn advance_set<T: Copy>(&mut self, t: T) {
+        unsafe {
+            let align_of_type = core::mem::align_of::<T>() as isize;
+            self.cur_offset += align_of_type - 1;
+            self.cur_offset -= self.cur_offset % align_of_type;
+            let offset = self.cur_offset;
+            self.cur_offset += core::mem::size_of::<T>() as isize;
+
+            let data_ref = self.ptr.offset(offset) as *mut T;
+            data_ref.write_volatile(t);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.cur_offset = 0;
+    }
+
+    pub fn get_offset(&self) -> isize {
+        self.cur_offset
+    }
+}
+
+pub mod client;
+
+pub mod server;

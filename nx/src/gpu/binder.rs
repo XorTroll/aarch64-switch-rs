@@ -1,4 +1,5 @@
 use crate::result::*;
+use crate::results;
 use crate::svc;
 use crate::gpu::parcel;
 use crate::service::dispdrv;
@@ -9,7 +10,7 @@ use super::*;
 
 pub const INTERFACE_TOKEN: &str = "android.gui.IGraphicBufferProducer";
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(i32)]
 pub enum ErrorCode {
     Success = 0,
@@ -31,49 +32,27 @@ pub enum ErrorCode {
     BadType = -2147483647,
 }
 
-pub const RESULT_SUBMODULE: u32 = 8;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultErrorCodeInvalid: 1,
-    ResultErrorCodePermissionDenied: 2,
-    ResultErrorCodeNameNotFound: 3,
-    ResultErrorCodeWouldBlock: 4,
-    ResultErrorCodeNoMemory: 5,
-    ResultErrorCodeAlreadyExists: 6,
-    ResultErrorCodeNoInit: 7,
-    ResultErrorCodeBadValue: 8,
-    ResultErrorCodeDeadObject: 9,
-    ResultErrorCodeInvalidOperation: 10,
-    ResultErrorCodeNotEnoughData: 11,
-    ResultErrorCodeUnknownTransaction: 12,
-    ResultErrorCodeBadIndex: 13,
-    ResultErrorCodeTimeOut: 14,
-    ResultErrorCodeFdsNotAllowed: 15,
-    ResultErrorCodeFailedTransaction: 16,
-    ResultErrorCodeBadType: 17
-});
-
 #[allow(unreachable_patterns)]
 pub fn convert_error_code(err: ErrorCode) -> Result<()> {
     match err {
         ErrorCode::Success => Ok(()),
-        ErrorCode::PermissionDenied => Err(ResultCode::from::<ResultErrorCodePermissionDenied>()),
-        ErrorCode::NameNotFound => Err(ResultCode::from::<ResultErrorCodeNameNotFound>()),
-        ErrorCode::WouldBlock => Err(ResultCode::from::<ResultErrorCodeWouldBlock>()),
-        ErrorCode::NoMemory => Err(ResultCode::from::<ResultErrorCodeNoMemory>()),
-        ErrorCode::AlreadyExists => Err(ResultCode::from::<ResultErrorCodeAlreadyExists>()),
-        ErrorCode::NoInit => Err(ResultCode::from::<ResultErrorCodeNoInit>()),
-        ErrorCode::BadValue => Err(ResultCode::from::<ResultErrorCodeBadValue>()),
-        ErrorCode::DeadObject => Err(ResultCode::from::<ResultErrorCodeDeadObject>()),
-        ErrorCode::InvalidOperation => Err(ResultCode::from::<ResultErrorCodeInvalidOperation>()),
-        ErrorCode::NotEnoughData => Err(ResultCode::from::<ResultErrorCodeNotEnoughData>()),
-        ErrorCode::UnknownTransaction => Err(ResultCode::from::<ResultErrorCodeUnknownTransaction>()),
-        ErrorCode::BadIndex => Err(ResultCode::from::<ResultErrorCodeBadIndex>()),
-        ErrorCode::TimeOut => Err(ResultCode::from::<ResultErrorCodeTimeOut>()),
-        ErrorCode::FdsNotAllowed => Err(ResultCode::from::<ResultErrorCodeFdsNotAllowed>()),
-        ErrorCode::FailedTransaction => Err(ResultCode::from::<ResultErrorCodeFailedTransaction>()),
-        ErrorCode::BadType => Err(ResultCode::from::<ResultErrorCodeBadType>()),
-        _ => Err(ResultCode::from::<ResultErrorCodeInvalid>()),
+        ErrorCode::PermissionDenied => Err(results::lib::gpu::ResultBinderErrorCodePermissionDenied::make()),
+        ErrorCode::NameNotFound => Err(results::lib::gpu::ResultBinderErrorCodeNameNotFound::make()),
+        ErrorCode::WouldBlock => Err(results::lib::gpu::ResultBinderErrorCodeWouldBlock::make()),
+        ErrorCode::NoMemory => Err(results::lib::gpu::ResultBinderErrorCodeNoMemory::make()),
+        ErrorCode::AlreadyExists => Err(results::lib::gpu::ResultBinderErrorCodeAlreadyExists::make()),
+        ErrorCode::NoInit => Err(results::lib::gpu::ResultBinderErrorCodeNoInit::make()),
+        ErrorCode::BadValue => Err(results::lib::gpu::ResultBinderErrorCodeBadValue::make()),
+        ErrorCode::DeadObject => Err(results::lib::gpu::ResultBinderErrorCodeDeadObject::make()),
+        ErrorCode::InvalidOperation => Err(results::lib::gpu::ResultBinderErrorCodeInvalidOperation::make()),
+        ErrorCode::NotEnoughData => Err(results::lib::gpu::ResultBinderErrorCodeNotEnoughData::make()),
+        ErrorCode::UnknownTransaction => Err(results::lib::gpu::ResultBinderErrorCodeUnknownTransaction::make()),
+        ErrorCode::BadIndex => Err(results::lib::gpu::ResultBinderErrorCodeBadIndex::make()),
+        ErrorCode::TimeOut => Err(results::lib::gpu::ResultBinderErrorCodeTimeOut::make()),
+        ErrorCode::FdsNotAllowed => Err(results::lib::gpu::ResultBinderErrorCodeFdsNotAllowed::make()),
+        ErrorCode::FailedTransaction => Err(results::lib::gpu::ResultBinderErrorCodeFailedTransaction::make()),
+        ErrorCode::BadType => Err(results::lib::gpu::ResultBinderErrorCodeBadType::make()),
+        _ => Err(results::lib::gpu::ResultBinderErrorCodeInvalid::make()),
     }
 }
 

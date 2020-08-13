@@ -7,13 +7,7 @@ use crate::service::fatal::IService;
 use core::ptr;
 use enumflags2::BitFlags;
 
-pub const RESULT_SUBMODULE: u32 = 6;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultAssertionFailed: 1
-});
-
-#[derive(BitFlags, Copy, Clone, PartialEq, Debug)]
+#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum AssertMode {
     ProcessExit = 0b1,

@@ -1,5 +1,3 @@
-global_asm!(include_str!("arm.s"));
-
 pub fn cache_flush(address: *mut u8, size: usize) {
     extern "C" {
         fn __nx_arm_cache_flush(address: *mut u8, size: usize);

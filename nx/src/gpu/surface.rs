@@ -1,15 +1,16 @@
-extern crate alloc;
-
+use super::*;
+use crate::results;
 use crate::gpu::binder;
 use crate::gpu::ioctl;
 use crate::svc;
 use crate::service::nv;
 use crate::service::vi;
 use crate::service::dispdrv;
+use crate::mem;
 use core::mem as cmem;
 use core::ptr;
-use crate::mem;
-use super::*;
+
+extern crate alloc;
 
 const MAX_BUFFERS: usize = 8;
 
@@ -168,7 +169,7 @@ impl<NS: nv::INvDrvService> Surface<NS> {
                         break;
                     },
                     Err(rc) => {
-                        if rc.matches::<binder::ResultErrorCodeWouldBlock>() {
+                        if results::lib::gpu::ResultBinderErrorCodeWouldBlock::matches(rc) {
                             continue;
                         }
                         return Err(rc);

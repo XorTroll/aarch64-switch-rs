@@ -1,6 +1,8 @@
 use crate::result::*;
+use crate::results;
 use crate::thread;
 use crate::diag::assert;
+use crate::diag::log;
 use crate::diag::log::Logger;
 use core::str;
 use core::ptr;
@@ -23,29 +25,21 @@ impl PointerAndSize {
     }
 }
 
-pub const RESULT_SUBMODULE: u32 = 3;
-
-result_lib_define_group!(RESULT_SUBMODULE => {
-    ResultInvalidPointer: 1,
-    ResultInvalidSize: 2,
-    ResultInvalidConversion: 3
-});
-
 pub fn get_str_from_pointer(ptr: *mut u8, ptr_size: usize) -> Result<&'static str> {
-    result_return_if!(ptr.is_null(), ResultInvalidPointer);
-    result_return_if!(ptr_size == 0, ResultInvalidSize);
+    result_return_if!(ptr.is_null(), results::lib::util::ResultInvalidPointer);
+    result_return_if!(ptr_size == 0, results::lib::util::ResultInvalidSize);
 
     unsafe {
         match core::str::from_utf8(core::slice::from_raw_parts_mut(ptr, ptr_size)) {
             Ok(name) => Ok(name.trim_matches('\0')),
-            Err(_) => Err(ResultCode::from::<ResultInvalidConversion>())
+            Err(_) => Err(results::lib::util::ResultInvalidConversion::make())
         }
     }
 }
 
 pub fn copy_str_to_pointer(string: &str, ptr: *mut u8) -> Result<()> {
-    result_return_if!(ptr.is_null(), ResultInvalidPointer);
-    result_return_if!(string.is_empty(), ResultInvalidSize);
+    result_return_if!(ptr.is_null(), results::lib::util::ResultInvalidPointer);
+    result_return_if!(string.is_empty(), results::lib::util::ResultInvalidSize);
 
     unsafe {
         ptr::copy(string.as_ptr(), ptr, string.len());
@@ -58,6 +52,6 @@ pub fn on_panic_handler<L: Logger>(info: &panic::PanicInfo, assert_mode: assert:
         Ok(name) => name,
         _ => "<unknown>",
     };
-    diag_log!(L { crate::diag::log::LogSeverity::Fatal, true } => "Panic! at thread '{}' -> {}", thread_name, info);
+    diag_log!(L { log::LogSeverity::Fatal, true } => "Panic! at thread '{}' -> {}", thread_name, info);
     assert::assert(assert_mode, rc)
 }

@@ -14,7 +14,7 @@ pub struct AppletAttribute {
     reserved: [u8; 0x7F]
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum ScreenShotPermission {
     Inherit,
@@ -22,7 +22,7 @@ pub enum ScreenShotPermission {
     Disable
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum AppletId {
     Application = 0x1,
@@ -49,7 +49,7 @@ pub enum AppletId {
     // TODO: add non-retail IDs too?
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum LibraryAppletMode {
     AllForeground,

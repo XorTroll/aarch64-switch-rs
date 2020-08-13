@@ -5,7 +5,7 @@ authors = ["XorTroll"]
 edition = "2018"
 
 [dependencies.nx]
-path = "../../nx"
+path = "../../../nx"
 
 [dependencies.font8x8]
 version = "0.2"
