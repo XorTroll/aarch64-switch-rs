@@ -1,67 +1,73 @@
 use crate::result::*;
-use crate::ipc;
+use crate::ipc::sf;
+use crate::ipc::server;
 use crate::service;
-use crate::service::SessionObject;
-use enumflags2::BitFlags;
+use crate::mem;
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum LogDestination {
-    TMA = 0b1,
-    UART = 0b10,
-    UARTSleeping = 0b100,
+pub use crate::ipc::sf::lm::*;
+
+pub struct Logger {
+    session: service::Session
 }
 
-pub trait ILogger {
-    fn log(&mut self, buf: *const u8, buf_size: usize) -> Result<()>;
-    fn set_destination(&mut self, log_destination: BitFlags<LogDestination>) -> Result<()>;
+impl service::ISessionObject for Logger {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
 }
-
-session_object_define!(Logger);
 
 impl ILogger for Logger {
-    fn log(&mut self, buf: *const u8, buf_size: usize) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (buf, buf_size) => ipc::BufferAttribute::In | ipc::BufferAttribute::AutoSelect
-            };
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    fn log(&mut self, log_buf: sf::InAutoSelectBuffer) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 0] (log_buf) => ())
     }
 
-    fn set_destination(&mut self, log_destination: BitFlags<LogDestination>) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 1; false] => {
-            In {
-                log_dest: BitFlags<LogDestination> = log_destination
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    fn set_destination(&mut self, log_destination: LogDestination) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 1] (log_destination) => ())
     }
 }
 
-pub trait ILogService {
-    fn open_logger<S: SessionObject>(&mut self) -> Result<S>;
+impl server::IServer for Logger {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            log: 0,
+            set_destination: 1
+        }
+    }
 }
 
-session_object_define!(LogService);
+pub struct LogService {
+    session: service::Session
+}
 
-impl service::Service for LogService {
+impl service::ISessionObject for LogService {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
+
+impl ILogService for LogService {
+    fn open_logger(&mut self, process_id: sf::ProcessId) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 0] (process_id) => (logger: mem::Shared<Logger>))
+    }
+}
+
+impl server::IServer for LogService {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            open_logger: 0
+        }
+    }
+}
+
+impl service::IService for LogService {
     fn get_name() -> &'static str {
         nul!("lm")
     }
@@ -72,27 +78,5 @@ impl service::Service for LogService {
 
     fn post_initialize(&mut self) -> Result<()> {
         Ok(())
-    }
-}
-
-impl ILogService for LogService {
-    fn open_logger<S: SessionObject>(&mut self) -> Result<S> {
-        let logger: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 0; true] => {
-            In {
-                process_id_holder: u64 = 0
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                logger
-            };
-        });
-        Ok(S::new(logger))
     }
 }

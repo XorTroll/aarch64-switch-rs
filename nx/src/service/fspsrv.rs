@@ -1,42 +1,78 @@
 use crate::result::*;
-use crate::ipc;
+use crate::ipc::sf;
+use crate::ipc::server;
 use crate::service;
-use crate::service::SessionObject;
+use crate::mem;
 
-pub trait IFileSystem {
-    fn create_directory(&mut self, path: *const u8, path_len: usize) -> Result<()>;
+pub use crate::ipc::sf::fspsrv::*;
+
+pub struct FileSystem {
+    session: service::Session
 }
 
-session_object_define!(FileSystem);
-
-impl IFileSystem for FileSystem {
-    fn create_directory(&mut self, path: *const u8, path_len: usize) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 2; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (path, path_len) => ipc::BufferAttribute::In | ipc::BufferAttribute::Pointer
-            };
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+impl service::ISessionObject for FileSystem {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
     }
 }
 
-pub trait IFileSystemProxy {
-    fn set_current_process(&mut self) -> Result<()>;
-    fn open_sd_card_filesystem<S: service::SessionObject>(&mut self) -> Result<S>;
-    fn output_access_log_to_sd_card(&mut self, buf: *const u8, buf_size: usize) -> Result<()>;
+impl IFileSystem for FileSystem {
+    fn create_directory(&mut self, path: sf::InPointerBuffer) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 2] (path) => ())
+    }
 }
 
-session_object_define!(FileSystemProxy);
+impl server::IServer for FileSystem {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            create_directory: 2
+        }
+    }
+}
 
-impl service::Service for FileSystemProxy {
+pub struct FileSystemProxy {
+    session: service::Session
+}
+
+impl service::ISessionObject for FileSystemProxy {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
+
+impl IFileSystemProxy for FileSystemProxy {
+    fn set_current_process(&mut self, process_id: sf::ProcessId) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 1] (process_id) => ())
+    }
+
+    fn open_sd_card_filesystem(&mut self) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 18] () => (sd_filesystem: mem::Shared<FileSystem>))
+    }
+
+    fn output_access_log_to_sd_card(&mut self, access_log: sf::InMapAliasBuffer) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 1006] (access_log) => ())
+    }
+}
+
+impl server::IServer for FileSystemProxy {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            set_current_process: 1,
+            open_sd_card_filesystem: 18,
+            output_access_log_to_sd_card: 1006
+        }
+    }
+}
+
+impl service::IService for FileSystemProxy {
     fn get_name() -> &'static str {
         nul!("fsp-srv")
     }
@@ -46,60 +82,6 @@ impl service::Service for FileSystemProxy {
     }
 
     fn post_initialize(&mut self) -> Result<()> {
-        self.set_current_process()
-    }
-}
-
-impl IFileSystemProxy for FileSystemProxy {
-    fn set_current_process(&mut self) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 1; true] => {
-            In {
-                process_id_holder: u64 = 0
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
-    }
-
-    fn open_sd_card_filesystem<S: service::SessionObject>(&mut self) -> Result<S> {
-        let fs: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 18; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                fs
-            };
-        });
-        Ok(S::new(fs))
-    }
-
-    fn output_access_log_to_sd_card(&mut self, buf: *const u8, buf_size: usize) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 1006; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (buf, buf_size) => ipc::BufferAttribute::In | ipc::BufferAttribute::MapAlias
-            };
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+        self.set_current_process(sf::ProcessId::new())
     }
 }

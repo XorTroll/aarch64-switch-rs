@@ -1,6 +1,6 @@
 use crate::result::*;
 use crate::results;
-use crate::svc;
+use crate::ipc::sf;
 use crate::gpu::parcel;
 use crate::service::dispdrv;
 use crate::service::dispdrv::IHOSBinderDriver;
@@ -57,12 +57,12 @@ pub fn convert_error_code(err: ErrorCode) -> Result<()> {
 }
 
 pub struct Binder {
-    handle: i32,
-    hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>,
+    handle: dispdrv::BinderHandle,
+    hos_binder_driver: mem::Shared<dispdrv::HOSBinderDriver>,
 }
 
 impl Binder {
-    pub fn new(handle: i32, hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>) -> Result<Self> {
+    pub fn new(handle: dispdrv::BinderHandle, hos_binder_driver: mem::Shared<dispdrv::HOSBinderDriver>) -> Result<Self> {
         Ok(Self { handle: handle, hos_binder_driver: hos_binder_driver })
     }
 
@@ -76,9 +76,9 @@ impl Binder {
         Ok(())
     }
 
-    fn transact_parcel_impl(&mut self, transaction_id: dispdrv::ParcelTransactionId, payload: parcel::ParcelPayload, payload_size: usize) -> Result<parcel::Parcel> {
+    fn transact_parcel_impl(&mut self, transaction_id: dispdrv::ParcelTransactionId, payload: parcel::ParcelPayload) -> Result<parcel::Parcel> {
         let response_payload = parcel::ParcelPayload::new();
-        self.hos_binder_driver.borrow_mut().transact_parcel(self.handle, transaction_id, 0, &payload as *const _ as *const u8, payload_size, &response_payload as *const _ as *const u8, cmem::size_of::<parcel::ParcelPayload>())?;
+        self.hos_binder_driver.get().transact_parcel(self.handle, transaction_id, 0, sf::Buffer::from_var(&payload), sf::Buffer::from_var(&response_payload))?;
         
         let mut parcel = parcel::Parcel::new();
         parcel.load_from(response_payload);
@@ -86,26 +86,26 @@ impl Binder {
     }
 
     fn transact_parcel(&mut self, transaction_id: dispdrv::ParcelTransactionId, parcel: &mut parcel::Parcel) -> Result<parcel::Parcel> {
-        let (payload, payload_size) = parcel.end_write()?;
-        self.transact_parcel_impl(transaction_id, payload, payload_size)
+        let (payload, _payload_size) = parcel.end_write()?;
+        self.transact_parcel_impl(transaction_id, payload)
     }
 
     pub fn get_handle(&self) -> i32 {
         self.handle
     }
 
-    pub fn get_hos_binder_driver(&mut self) -> mem::SharedObject<dispdrv::HOSBinderDriver> {
+    pub fn get_hos_binder_driver(&mut self) -> mem::Shared<dispdrv::HOSBinderDriver> {
         self.hos_binder_driver.clone()
     }
 
     pub fn increase_refcounts(&mut self) -> Result<()> {
-        self.hos_binder_driver.borrow_mut().adjust_refcount(self.handle, 1, dispdrv::RefcountType::Weak)?;
-        self.hos_binder_driver.borrow_mut().adjust_refcount(self.handle, 1, dispdrv::RefcountType::Strong)
+        self.hos_binder_driver.get().adjust_refcount(self.handle, 1, dispdrv::RefcountType::Weak)?;
+        self.hos_binder_driver.get().adjust_refcount(self.handle, 1, dispdrv::RefcountType::Strong)
     }
 
     pub fn decrease_refcounts(&mut self) -> Result<()> {
-        self.hos_binder_driver.borrow_mut().adjust_refcount(self.handle, -1, dispdrv::RefcountType::Weak)?;
-        self.hos_binder_driver.borrow_mut().adjust_refcount(self.handle, -1, dispdrv::RefcountType::Strong)
+        self.hos_binder_driver.get().adjust_refcount(self.handle, -1, dispdrv::RefcountType::Weak)?;
+        self.hos_binder_driver.get().adjust_refcount(self.handle, -1, dispdrv::RefcountType::Strong)
     }
 
     pub fn connect(&mut self, api: ConnectionApi, producer_controlled_by_app: bool) -> Result<QueueBufferOutput> {
@@ -170,7 +170,7 @@ impl Binder {
         Ok((non_null, gfx_buf))
     }
 
-    pub fn dequeue_buffer(&mut self, is_async: bool, width: u32, height: u32, get_frame_timestamps: bool, usage: BitFlags<GraphicsAllocatorUsage>) -> Result<(i32, bool, MultiFence)> {
+    pub fn dequeue_buffer(&mut self, is_async: bool, width: u32, height: u32, get_frame_timestamps: bool, usage: GraphicsAllocatorUsage) -> Result<(i32, bool, MultiFence)> {
         let mut parcel = parcel::Parcel::new();
         self.transact_parcel_begin(&mut parcel)?;
 
@@ -209,7 +209,7 @@ impl Binder {
         Ok(qbo)
     }
 
-    pub fn get_native_handle(&mut self, unk: u32) -> Result<svc::Handle> {
-        self.hos_binder_driver.borrow_mut().get_native_handle(self.handle, unk)
+    pub fn get_native_handle(&mut self, handle_type: dispdrv::NativeHandleType) -> Result<sf::CopyHandle> {
+        self.hos_binder_driver.get().get_native_handle(self.handle, handle_type)
     }
 }

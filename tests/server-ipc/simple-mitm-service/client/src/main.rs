@@ -15,37 +15,35 @@ use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
 use nx::service;
-use nx::service::SessionObject;
 
 use core::panic;
 
-pub trait IAccU0Service {
-    fn get_user_count(&mut self) -> Result<u32>;
+// Same interface as /server project
+pub trait IAccountServiceForApplication {
+    ipc_interface_define_command!(get_user_count: () => (out_value: u32));
 }
 
-session_object_define!(AccU0Service);
+pub struct AccountServiceForApplication {
+    session: service::Session
+}
 
-impl IAccU0Service for AccU0Service {
-    fn get_user_count(&mut self) -> Result<u32> {
-        let out: u32;
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                out: u32 => out
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(out)
+impl service::ISessionObject for AccountServiceForApplication {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
     }
 }
 
-impl service::Service for AccU0Service {
+impl IAccountServiceForApplication for AccountServiceForApplication {
+    fn get_user_count(&mut self) -> Result<u32> {
+        ipc_client_send_request_command!([self.session.session; 0] () => (count: u32))
+    }
+}
+
+impl service::IService for AccountServiceForApplication {
     fn get_name() -> &'static str {
         nul!("acc:u0")
     }
@@ -72,9 +70,9 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
 }
 
 pub fn client_main() -> Result<()> {
-    let mut accu0 = service::new_service_object::<AccU0Service>()?;
+    let acc = service::new_service_object::<AccountServiceForApplication>()?;
 
-    let count = accu0.get_user_count()?;
+    let count = acc.get().get_user_count()?;
     diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "Got user count: {}", count);
 
     Ok(())
@@ -83,7 +81,7 @@ pub fn client_main() -> Result<()> {
 #[no_mangle]
 pub fn main() -> Result<()> {
     match client_main() {
-        Err(rc) => diag_log_result_assert!(log::LmLogger, assert::AssertMode::FatalThrow => rc),
+        Err(rc) => diag_result_log_assert!(log::LmLogger, assert::AssertMode::FatalThrow => rc),
         _ => {}
     }
 

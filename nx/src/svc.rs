@@ -1,7 +1,6 @@
 use crate::result::*;
 use core::ptr;
 use core::mem;
-use enumflags2::BitFlags;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
@@ -44,22 +43,24 @@ pub enum MemoryState {
     CodeOut = 0x15
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum MemoryPermission {
-    Read = 0b1,
-    Write = 0b10,
-    Execute = 0b100,
-    DontCare = 0b10000000000000000000000000000,
+bit_enum! {
+    MemoryPermission (u32) {
+        None = 0,
+        Read = bit!(0),
+        Write = bit!(1),
+        Execute = bit!(2),
+        DontCare = bit!(28)
+    }
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum MemoryAttribute {
-    Locked = 0b1,
-    IpcLocked = 0b10,
-    DeviceShared = 0b100,
-    Uncached = 0b1000,
+bit_enum! {
+    MemoryAttribute (u32) {
+        None = 0,
+        Borrowed = bit!(0),
+        IpcMapped = bit!(1),
+        DeviceMapped = bit!(2),
+        Uncached = bit!(3)
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -113,8 +114,6 @@ pub type Handle = u32;
 pub const CURRENT_THREAD_PSEUDO_HANDLE: Handle = 0xFFFF8000;
 pub const CURRENT_PROCESS_PSEUDO_HANDLE: Handle = 0xFFFF8001;
 
-// TODO: move all svcs to svc.s
-
 pub fn set_heap_size(size: Size) -> Result<*mut u8> {
     extern "C" {
         fn __nx_svc_set_heap_size(out_address: *mut *mut u8, size: Size) -> ResultCode;
@@ -128,9 +127,9 @@ pub fn set_heap_size(size: Size) -> Result<*mut u8> {
     }
 }
 
-pub fn set_memory_attribute(address: Address, size: Size, mask: u32, value: BitFlags<MemoryAttribute>) -> Result<()> {
+pub fn set_memory_attribute(address: Address, size: Size, mask: u32, value: MemoryAttribute) -> Result<()> {
     extern "C" {
-        fn __nx_svc_set_memory_attribute(address: Address, size: Size, mask: u32, value: BitFlags<MemoryAttribute>) -> ResultCode;
+        fn __nx_svc_set_memory_attribute(address: Address, size: Size, mask: u32, value: MemoryAttribute) -> ResultCode;
     }
 
     unsafe {
@@ -221,9 +220,9 @@ pub fn get_thread_priority(handle: Handle) -> Result<i32> {
     }
 }
 
-pub fn map_shared_memory(handle: Handle, address: Address, size: Size, permission: BitFlags<MemoryPermission>) -> Result<()> {
+pub fn map_shared_memory(handle: Handle, address: Address, size: Size, permission: MemoryPermission) -> Result<()> {
     extern "C" {
-        fn __nx_svc_map_shared_memory(handle: Handle, address: Address, size: Size, permission: BitFlags<MemoryPermission>) -> ResultCode;
+        fn __nx_svc_map_shared_memory(handle: Handle, address: Address, size: Size, permission: MemoryPermission) -> ResultCode;
     }
 
     unsafe {
@@ -243,9 +242,9 @@ pub fn unmap_shared_memory(handle: Handle, address: Address, size: Size) -> Resu
     }
 }
 
-pub fn create_transfer_memory(address: Address, size: Size, permissions: BitFlags<MemoryPermission>) -> Result<Handle> {
+pub fn create_transfer_memory(address: Address, size: Size, permissions: MemoryPermission) -> Result<Handle> {
     extern "C" {
-        fn __nx_svc_create_transfer_memory(out_handle: *mut Handle, address: Address, size: Size, permissions: BitFlags<MemoryPermission>) -> ResultCode;
+        fn __nx_svc_create_transfer_memory(out_handle: *mut Handle, address: Address, size: Size, permissions: MemoryPermission) -> ResultCode;
     }
 
     unsafe {

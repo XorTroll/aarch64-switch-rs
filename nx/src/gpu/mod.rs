@@ -4,14 +4,13 @@ use crate::result::*;
 use crate::service;
 use crate::mem;
 use crate::svc;
+use crate::ipc::sf;
 use crate::service::nv;
 use crate::service::nv::INvDrvService;
 use crate::service::vi;
 use crate::service::vi::IRootService;
 use crate::service::vi::IApplicationDisplayService;
 use crate::service::dispdrv;
-use core::mem as cmem;
-use enumflags2::BitFlags;
 
 pub mod parcel;
 
@@ -533,20 +532,34 @@ pub enum PixelFormat {
     YV12 = 0x32315659,
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum GraphicsAllocatorUsage {
-    HardwareTexture = 0x100,
-    HardwareRender = 0x200,
-    Hardware2d = 0x400,
-    HardwareComposer = 0x800,
-    HardwareFramebuffer = 0x1000,
-    HardwareExternalDisplay = 0x2000,
-    HardwareProtected = 0x4000,
-    HardwareCursor = 0x8000,
-    HardwareVideoEncoder = 0x10000,
-    HardwareCameraWrite = 0x20000,
-    HardwareCameraRead = 0x40000,
+bit_enum! {
+    GraphicsAllocatorUsage (u32) {
+        SoftwareReadNever = 0,
+        SoftwareReadRarely = 0x2,
+        SoftwareReadOften = 0x3,
+        SoftwareReadMask = 0xF,
+
+        SoftwareWriteNever = 0,
+        SoftwareWriteRarely = 0x20,
+        SoftwareWriteOften = 0x30,
+        SoftwareWriteMask = 0xF0,
+
+        HardwareTexture = 0x100,
+        HardwareRender = 0x200,
+        Hardware2d = 0x400,
+        HardwareComposer = 0x800,
+        HardwareFramebuffer = 0x1000,
+        HardwareExternalDisplay = 0x2000,
+        HardwareProtected = 0x4000,
+        HardwareCursor = 0x8000,
+        HardwareVideoEncoder = 0x10000,
+        HardwareCameraWrite = 0x20000,
+        HardwareCameraRead = 0x40000,
+        HardwareCameraZSL = 0x60000,
+        HardwareCameraMask = 0x60000,
+        HardwareMask = 0x71F00,
+        RenderScript = 0x100000   
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -607,7 +620,7 @@ pub struct GraphicBufferHeader {
     pub height: u32,
     pub stride: u32,
     pub pixel_format: PixelFormat,
-    pub gfx_alloc_usage: BitFlags<GraphicsAllocatorUsage>,
+    pub gfx_alloc_usage: GraphicsAllocatorUsage,
     pub pid: u32,
     pub refcount: u32,
     pub fd_count: u32,
@@ -627,7 +640,7 @@ pub struct GraphicBuffer {
     pub magic: u32,
     pub pid: u32,
     pub buffer_type: u32,
-    pub gfx_alloc_usage: BitFlags<GraphicsAllocatorUsage>,
+    pub gfx_alloc_usage: GraphicsAllocatorUsage,
     pub pixel_format: PixelFormat,
     pub external_pixel_format: PixelFormat,
     pub stride: u32,
@@ -707,11 +720,11 @@ const NVHOST_PATH: &str = nul!("/dev/nvhost-as-gpu");
 const NVMAP_PATH: &str = nul!("/dev/nvmap");
 const NVHOSTCTRL_PATH: &str = nul!("/dev/nvhost-ctrl");
 
-pub struct GpuContext<VS: IRootService + service::Service + service::SessionObject + service::SharedSessionObject, NS: INvDrvService + service::Service + service::SessionObject + service::SharedSessionObject> {
-    vi_service: mem::SharedObject<VS>,
-    nvdrv_service: mem::SharedObject<NS>,
-    application_display_service: mem::SharedObject<vi::ApplicationDisplayService>,
-    hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>,
+pub struct GpuContext<VS: IRootService + service::IService + service::ISessionObject + 'static, NS: INvDrvService + service::IService + service::ISessionObject + 'static> {
+    vi_service: mem::Shared<VS>,
+    nvdrv_service: mem::Shared<NS>,
+    application_display_service: mem::Shared<vi::ApplicationDisplayService>,
+    hos_binder_driver: mem::Shared<dispdrv::HOSBinderDriver>,
     transfer_mem: *mut u8,
     transfer_mem_alloc_layout: alloc::alloc::Layout,
     transfer_mem_handle: svc::Handle,
@@ -720,47 +733,47 @@ pub struct GpuContext<VS: IRootService + service::Service + service::SessionObje
     nvhostctrl_fd: u32,
 }
 
-impl<VS: IRootService + service::Service + service::SessionObject + service::SharedSessionObject, NS: INvDrvService + service::Service + service::SessionObject + service::SharedSessionObject> GpuContext<VS, NS> {
+impl<VS: IRootService + service::IService + service::ISessionObject + 'static, NS: INvDrvService + service::IService + service::ISessionObject + 'static> GpuContext<VS, NS> {
     pub fn new(transfer_mem_size: usize) -> Result<Self> {
-        let vi_srv = service::new_shared_service_object::<VS>()?;
-        let nvdrv_srv = service::new_shared_service_object::<NS>()?;
+        let vi_srv = service::new_service_object::<VS>()?;
+        let nvdrv_srv = service::new_service_object::<NS>()?;
         
         let transfer_mem_alloc_layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(transfer_mem_size, 0x1000) };
         
         let transfer_mem = unsafe { alloc::alloc::alloc(transfer_mem_alloc_layout) };
-        let transfer_mem_handle = svc::create_transfer_memory(transfer_mem, transfer_mem_size, BitFlags::empty())?;
-        nvdrv_srv.borrow_mut().initialize(transfer_mem_handle, transfer_mem_size as u32)?;
+        let transfer_mem_handle = svc::create_transfer_memory(transfer_mem, transfer_mem_size, svc::MemoryPermission::None())?;
+        nvdrv_srv.get().initialize(transfer_mem_size as u32, sf::Handle::from(svc::CURRENT_PROCESS_PSEUDO_HANDLE), sf::Handle::from(transfer_mem_handle))?;
 
-        let (nvhost_fd, nvhost_err) = nvdrv_srv.borrow_mut().open_fd(NVHOST_PATH.as_ptr(), NVHOST_PATH.len())?;
+        let (nvhost_fd, nvhost_err) = nvdrv_srv.get().open(sf::Buffer::from_const(NVHOST_PATH.as_ptr(), NVHOST_PATH.len()))?;
         nv::convert_error_code(nvhost_err)?;
-        let (nvmap_fd, nvmap_err) = nvdrv_srv.borrow_mut().open_fd(NVMAP_PATH.as_ptr(), NVMAP_PATH.len())?;
+        let (nvmap_fd, nvmap_err) = nvdrv_srv.get().open(sf::Buffer::from_const(NVMAP_PATH.as_ptr(), NVMAP_PATH.len()))?;
         nv::convert_error_code(nvmap_err)?;
-        let (nvhostctrl_fd, nvhostctrl_err) = nvdrv_srv.borrow_mut().open_fd(NVHOSTCTRL_PATH.as_ptr(), NVHOSTCTRL_PATH.len())?;
+        let (nvhostctrl_fd, nvhostctrl_err) = nvdrv_srv.get().open(sf::Buffer::from_const(NVHOSTCTRL_PATH.as_ptr(), NVHOSTCTRL_PATH.len()))?;
         nv::convert_error_code(nvhostctrl_err)?;
-
-        let application_display_srv: mem::SharedObject<vi::ApplicationDisplayService> = vi_srv.borrow_mut().get_display_service(false)?;
-        let hos_binder_drv: mem::SharedObject<dispdrv::HOSBinderDriver> = application_display_srv.borrow_mut().get_relay_service()?;
+        
+        let application_display_srv = vi_srv.get().get_display_service(vi::DisplayServiceMode::Privileged)?.to::<vi::ApplicationDisplayService>();
+        let hos_binder_drv = application_display_srv.get().get_relay_service()?.to::<dispdrv::HOSBinderDriver>();
         Ok(Self { vi_service: vi_srv, nvdrv_service: nvdrv_srv, application_display_service: application_display_srv, hos_binder_driver: hos_binder_drv, transfer_mem: transfer_mem, transfer_mem_alloc_layout: transfer_mem_alloc_layout, transfer_mem_handle: transfer_mem_handle, nvhost_fd: nvhost_fd, nvmap_fd: nvmap_fd, nvhostctrl_fd: nvhostctrl_fd })
     }
 
-    pub fn get_vi_service(&self) -> mem::SharedObject<VS> {
+    pub fn get_vi_service(&self) -> mem::Shared<VS> {
         self.vi_service.clone()
     }
 
-    pub fn get_nvdrv_service(&self) -> mem::SharedObject<NS> {
+    pub fn get_nvdrv_service(&self) -> mem::Shared<NS> {
         self.nvdrv_service.clone()
     }
 
-    pub fn get_application_display_service(&self) -> mem::SharedObject<vi::ApplicationDisplayService> {
+    pub fn get_application_display_service(&self) -> mem::Shared<vi::ApplicationDisplayService> {
         self.application_display_service.clone()
     }
 
-    pub fn get_hos_binder_driver(&self) -> mem::SharedObject<dispdrv::HOSBinderDriver> {
+    pub fn get_hos_binder_driver(&self) -> mem::Shared<dispdrv::HOSBinderDriver> {
         self.hos_binder_driver.clone()
     }
 
-    fn stray_layer_destroy(layer_id: vi::LayerId, application_display_service: mem::SharedObject<vi::ApplicationDisplayService>) -> Result<()> {
-        application_display_service.borrow_mut().destroy_stray_layer(layer_id)
+    fn stray_layer_destroy(layer_id: vi::LayerId, application_display_service: mem::Shared<vi::ApplicationDisplayService>) -> Result<()> {
+        application_display_service.get().destroy_stray_layer(layer_id)
     }
 
     fn create_surface_impl(&mut self, buffer_count: u32, display_id: vi::DisplayId, layer_id: vi::LayerId, width: u32, height: u32, color_fmt: ColorFormat, pixel_fmt: PixelFormat, layout: Layout, layer_destroy_fn: surface::LayerDestroyFn, native_window: parcel::ParcelPayload) -> Result<surface::Surface<NS>> {
@@ -772,19 +785,19 @@ impl<VS: IRootService + service::Service + service::SessionObject + service::Sha
     }
 
     pub fn create_stray_layer_surface(&mut self, display_name: &str, width: u32, height: u32, buffer_count: u32, color_fmt: ColorFormat, pixel_fmt: PixelFormat, layout: Layout) -> Result<surface::Surface<NS>> {
-        let display_id = self.application_display_service.borrow_mut().open_display(vi::DisplayName::from(display_name)?)?;
+        let display_id = self.application_display_service.get().open_display(vi::DisplayName::from(display_name)?)?;
         let native_window = parcel::ParcelPayload::new();
-        let (layer_id, _) = self.application_display_service.borrow_mut().create_stray_layer(BitFlags::from(vi::LayerFlags::Default), display_id, &native_window as *const _ as *const u8, cmem::size_of::<parcel::ParcelPayload>())?;
+        let (layer_id, _) = self.application_display_service.get().create_stray_layer(vi::LayerFlags::Default(), display_id, sf::Buffer::from_var(&native_window))?;
 
         self.create_surface_impl(buffer_count, display_id, layer_id, width, height, color_fmt, pixel_fmt, layout, Self::stray_layer_destroy, native_window)
     }
 }
 
-impl<VS: IRootService + service::Service + service::SessionObject + service::SharedSessionObject, NS: INvDrvService + service::Service + service::SessionObject + service::SharedSessionObject> Drop for GpuContext<VS, NS> {
+impl<VS: IRootService + service::IService + service::ISessionObject + 'static, NS: INvDrvService + service::IService + service::ISessionObject + 'static> Drop for GpuContext<VS, NS> {
     fn drop(&mut self) {
-        let _ = self.nvdrv_service.borrow_mut().close_fd(self.nvhost_fd);
-        let _ = self.nvdrv_service.borrow_mut().close_fd(self.nvmap_fd);
-        let _ = self.nvdrv_service.borrow_mut().close_fd(self.nvhostctrl_fd);
+        let _ = self.nvdrv_service.get().close(self.nvhost_fd);
+        let _ = self.nvdrv_service.get().close(self.nvmap_fd);
+        let _ = self.nvdrv_service.get().close(self.nvhostctrl_fd);
 
         unsafe { alloc::alloc::dealloc(self.transfer_mem, self.transfer_mem_alloc_layout); }
         let _ = svc::close_handle(self.transfer_mem_handle);

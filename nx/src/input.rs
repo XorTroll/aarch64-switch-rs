@@ -1,50 +1,47 @@
-extern crate alloc;
-use alloc::vec::Vec;
-
-use enumflags2::BitFlags;
 use crate::result::*;
 use crate::service::applet;
 use crate::service::hid;
 use crate::service::hid::IAppletResource;
 use crate::service::hid::IHidServer;
+use crate::ipc::sf;
 use crate::svc;
 use crate::mem;
 use crate::vmem;
 use crate::service;
 use core::mem as cmem;
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u64)]
-pub enum Key {
-    A = 0b1,
-    B = 0b10,
-    X = 0b100,
-    Y = 0b1000,
-    LStick = 0b10000,
-    RStick = 0b100000,
-    L = 0b1000000,
-    R = 0b10000000,
-    ZL = 0b100000000,
-    ZR = 0b1000000000,
-    Plus = 0b10000000000,
-    Minus = 0b100000000000,
-    Left = 0b1000000000000,
-    Right = 0b10000000000000,
-    Up = 0b100000000000000,
-    Down = 0b1000000000000000,
-    LStickLeft = 0b10000000000000000,
-    LStickUp = 0b100000000000000000,
-    LStickRight = 0b1000000000000000000,
-    LStickDown = 0b10000000000000000000,
-    RStickLeft = 0b100000000000000000000,
-    RStickUp = 0b1000000000000000000000,
-    RStickRight = 0b10000000000000000000000,
-    RStickDown = 0b100000000000000000000000,
-    SLLeft = 0b1000000000000000000000000,
-    SRLeft = 0b10000000000000000000000000,
-    SLRight = 0b100000000000000000000000000,
-    SRRight = 0b1000000000000000000000000000,
-    Touch = 0b10000000000000000000000000000,
+bit_enum! {
+    Key (u64) {
+        A = bit!(0),
+        B = bit!(1),
+        X = bit!(2),
+        Y = bit!(3),
+        LStick = bit!(4),
+        RStick = bit!(5),
+        L = bit!(6),
+        R = bit!(7),
+        ZL = bit!(8),
+        ZR = bit!(9),
+        Plus = bit!(10),
+        Minus = bit!(11),
+        Left = bit!(12),
+        Right = bit!(13),
+        Up = bit!(14),
+        Down = bit!(15),
+        LStickLeft = bit!(16),
+        LStickUp = bit!(17),
+        LStickRight = bit!(18),
+        LStickDown = bit!(19),
+        RStickLeft = bit!(20),
+        RStickUp = bit!(21),
+        RStickRight = bit!(22),
+        RStickDown = bit!(23),
+        SLLeft = bit!(24),
+        SRLeft = bit!(25),
+        SLRight = bit!(26),
+        SRRight = bit!(27),
+        Touch = bit!(28)
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -88,11 +85,12 @@ pub struct JoystickPosition {
     pub y: u32
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u64)]
-pub enum ConnectionState {
-    Connected = 0b1,
-    Wired = 0b10,
+bit_enum! {
+    ConnectionState (u64) {
+        None = 0,
+        Connected = bit!(0),
+        Wired = bit!(1)
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -103,7 +101,7 @@ pub struct ControllerStateEntry {
     pub button_state: u64,
     pub left_position: JoystickPosition,
     pub right_position: JoystickPosition,
-    pub connection_state: BitFlags<ConnectionState>
+    pub connection_state: ConnectionState
 }
 
 #[derive(Copy, Clone)]
@@ -189,24 +187,24 @@ impl Player {
         last_entry.button_state
     }
 
-    pub fn get_button_state_held(&mut self) -> BitFlags<Key> {
+    pub fn get_button_state_held(&mut self) -> Key {
         let button_state = self.get_button_state();
         self.prev_button_state = button_state;
-        BitFlags::from_bits_truncate(button_state)
+        Key(button_state)
     }
 
-    pub fn get_button_state_down(&mut self) -> BitFlags<Key> {
+    pub fn get_button_state_down(&mut self) -> Key {
         let button_state = self.get_button_state();
         let down_state = (!self.prev_button_state) & button_state;
         self.prev_button_state = button_state;
-        BitFlags::from_bits_truncate(down_state)
+        Key(down_state)
     }
 
-    pub fn get_button_state_up(&mut self) -> BitFlags<Key> {
+    pub fn get_button_state_up(&mut self) -> Key {
         let button_state = self.get_button_state();
         let up_state = self.prev_button_state & (!button_state);
         self.prev_button_state = button_state;
-        BitFlags::from_bits_truncate(up_state)
+        Key(up_state)
     }
 
     pub fn get_controller(&self) -> hid::ControllerId {
@@ -216,19 +214,19 @@ impl Player {
 
 #[allow(dead_code)]
 pub struct InputContext {
-    hid_service: mem::SharedObject<hid::HidServer>,
-    applet_resource: mem::SharedObject<hid::AppletResource>,
+    hid_service: mem::Shared<hid::HidServer>,
+    applet_resource: mem::Shared<hid::AppletResource>,
     shared_mem_handle: svc::Handle,
     aruid: applet::AppletResourceUserId,
     shared_mem_data: *const SharedMemoryData
 }
 
 macro_rules! set_all_controllers_mode_dual_impl {
-    ([Result] $srv:expr, $aruid:expr, $( $id:expr ),*) => {
-        $( $srv.borrow_mut().set_npad_joy_assignment_mode_dual($aruid, $id)?; )*
+    (? $srv:expr, $process_id:expr, $( $id:expr ),*) => {
+        $( $srv.get().set_npad_joy_assignment_mode_dual($process_id, $id)?; )*
     };
-    ([NoResult] $srv:expr, $aruid:expr, $( $id:expr ),*) => {
-        $( let _ = $srv.borrow_mut().set_npad_joy_assignment_mode_dual($aruid, $id); )*
+    ($srv:expr, $process_id:expr, $( $id:expr ),*) => {
+        $( let _ = $srv.get().set_npad_joy_assignment_mode_dual($process_id, $id); )*
     };
 }
 
@@ -242,26 +240,27 @@ fn get_index_for_controller(controller: hid::ControllerId) -> Result<usize> {
 }
 
 impl InputContext {
-    pub fn new(aruid: applet::AppletResourceUserId, supported_tags: BitFlags<hid::NpadStyleTag>, controllers: Vec<hid::ControllerId>) -> Result<Self> {
-        let hid_srv = service::new_shared_service_object::<hid::HidServer>()?;
-        let applet_res: mem::SharedObject<hid::AppletResource> = hid_srv.borrow_mut().create_applet_resource(aruid)?;
-        let shmem_handle = applet_res.borrow_mut().get_shared_memory_handle()?;
+    pub fn new(aruid: applet::AppletResourceUserId, supported_tags: hid::NpadStyleTag, controllers: &[hid::ControllerId]) -> Result<Self> {
+        let hid_srv = service::new_service_object::<hid::HidServer>()?;
+        let hid_process_id = sf::ProcessId::from(aruid);
+        let applet_res = hid_srv.get().create_applet_resource(hid_process_id)?.to::<hid::AppletResource>();
+        let shmem_handle = applet_res.get().get_shared_memory_handle()?;
         let shmem_size = cmem::size_of::<SharedMemoryData>();
-        let shmem_data = vmem::allocate(shmem_size)?;
-        svc::map_shared_memory(shmem_handle, shmem_data, shmem_size, BitFlags::from(svc::MemoryPermission::Read))?;
-        hid_srv.borrow_mut().activate_npad(aruid)?;
-        hid_srv.borrow_mut().set_supported_npad_style_set(aruid, supported_tags)?;
-        hid_srv.borrow_mut().set_supported_npad_id_type(aruid, controllers.as_ptr() as *const u8, controllers.len() * cmem::size_of::<hid::ControllerId>())?;
-        hid_srv.borrow_mut().activate_npad(aruid)?;
-        set_all_controllers_mode_dual_impl!([Result] hid_srv, aruid, hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld);
-        Ok(Self { hid_service: hid_srv, applet_resource: applet_res, shared_mem_handle: shmem_handle, aruid: aruid, shared_mem_data: shmem_data as *const SharedMemoryData })
+        let shmem_address = vmem::allocate(shmem_size)?;
+        svc::map_shared_memory(shmem_handle.handle, shmem_address, shmem_size, svc::MemoryPermission::Read())?;
+        hid_srv.get().activate_npad(hid_process_id)?;
+        hid_srv.get().set_supported_npad_style_set(hid_process_id, supported_tags)?;
+        hid_srv.get().set_supported_npad_id_type(hid_process_id, sf::Buffer::from_array(controllers))?;
+        hid_srv.get().activate_npad(hid_process_id)?;
+        set_all_controllers_mode_dual_impl!(? hid_srv, hid_process_id, hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld);
+        Ok(Self { hid_service: hid_srv, applet_resource: applet_res, shared_mem_handle: shmem_handle.handle, aruid: aruid, shared_mem_data: shmem_address as *const SharedMemoryData })
     }
 
     pub fn is_controller_connected(&mut self, controller: hid::ControllerId) -> bool {
         if let Ok(index) = get_index_for_controller(controller) {
             let controller_data = unsafe { &(*self.shared_mem_data).controllers[index] };
             let last_entry = controller_data.main_state.entries[controller_data.main_state.latest_index as usize];
-            last_entry.connection_state.contains(ConnectionState::Connected)
+            last_entry.connection_state.contains(ConnectionState::Connected())
         }
         else {
             false
@@ -277,8 +276,9 @@ impl InputContext {
 
 impl Drop for InputContext {
     fn drop(&mut self) {
-        set_all_controllers_mode_dual_impl!([NoResult] self.hid_service, self.aruid, hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld);
-        let _ = self.hid_service.borrow_mut().deactivate_npad(self.aruid);
+        let hid_process_id = sf::ProcessId::from(self.aruid);
+        set_all_controllers_mode_dual_impl!(self.hid_service, hid_process_id, hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld);
+        let _ = self.hid_service.get().deactivate_npad(hid_process_id);
         let _ = svc::unmap_shared_memory(self.shared_mem_handle, self.shared_mem_data as *mut u8, cmem::size_of::<SharedMemoryData>());
         let _ = svc::close_handle(self.shared_mem_handle);
     }

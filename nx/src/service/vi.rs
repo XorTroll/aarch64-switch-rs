@@ -1,197 +1,99 @@
 use crate::result::*;
-use crate::util;
-use crate::svc;
-use crate::ipc;
+use crate::ipc::sf;
+use crate::ipc::server;
 use crate::service;
-use crate::service::SessionObject;
-use crate::service::applet;
-use enumflags2::BitFlags;
+use crate::mem;
+use crate::service::dispdrv;
 
-pub struct DisplayName {
-    name: [u8; 0x40]
+pub use crate::ipc::sf::vi::*;
+
+pub struct ApplicationDisplayService {
+    session: service::Session
 }
 
-impl DisplayName {
-    pub fn from(name: &str) -> Result<Self> {
-        let mut display_name = Self { name: [0; 0x40] };
-        util::copy_str_to_pointer(name, &mut display_name.name as *mut _ as *mut u8)?;
-        Ok(display_name)
+impl service::ISessionObject for ApplicationDisplayService {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
     }
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum LayerFlags {
-    Default = 0b1,
-}
-
-pub type DisplayId = u64;
-
-pub type LayerId = u64;
-
-pub trait IApplicationDisplayService {
-    fn get_relay_service<S: SessionObject>(&mut self) -> Result<S>;
-    fn open_display(&mut self, name: DisplayName) -> Result<DisplayId>;
-    fn close_display(&mut self, display_id: DisplayId) -> Result<()>;
-    fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: applet::AppletResourceUserId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize>;
-    fn create_stray_layer(&mut self, flags: BitFlags<LayerFlags>, display_id: DisplayId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<(LayerId, usize)>;
-    fn destroy_stray_layer(&mut self, layer_id: LayerId) -> Result<()>;
-    fn get_display_vsync_event(&mut self, display_id: DisplayId) -> Result<svc::Handle>;
-}
-
-session_object_define!(ApplicationDisplayService);
-
 impl IApplicationDisplayService for ApplicationDisplayService {
-    fn get_relay_service<S: SessionObject>(&mut self) -> Result<S> {
-        let relay_srv: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 100; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                relay_srv
-            };
-        });
-        Ok(S::new(relay_srv))
+    fn get_relay_service(&mut self) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 100] () => (relay_service: mem::Shared<dispdrv::HOSBinderDriver>))
     }
 
     fn open_display(&mut self, name: DisplayName) -> Result<DisplayId> {
-        let display_id: DisplayId;
-        ipc_client_session_send_request_command!([self.session; 1010; false] => {
-            In {
-                display_name: DisplayName = name
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                display_id: DisplayId => display_id
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(display_id)
+        ipc_client_send_request_command!([self.session.session; 1010] (name) => (id: DisplayId))
     }
 
     fn close_display(&mut self, display_id: DisplayId) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 1020; false] => {
-            In {
-                display_id: DisplayId = display_id
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+        ipc_client_send_request_command!([self.session.session; 1020] (display_id) => ())
     }
 
-    fn open_layer(&mut self, name: DisplayName, layer_id: LayerId, aruid: applet::AppletResourceUserId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<usize> {
-        let native_window_size: usize;
-        ipc_client_session_send_request_command!([self.session; 2020; true] => {
-            In {
-                display_name: DisplayName = name,
-                layer_id: LayerId = layer_id,
-                aruid: applet::AppletResourceUserId = aruid
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (out_native_window_buf, out_native_window_size) => ipc::BufferAttribute::Out | ipc::BufferAttribute::MapAlias
-            };
-            Out {
-                native_window_size: usize => native_window_size
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(native_window_size)
+    fn open_layer(&mut self, name: DisplayName, id: LayerId, aruid: sf::ProcessId, out_native_window: sf::OutMapAliasBuffer) -> Result<usize> {
+        ipc_client_send_request_command!([self.session.session; 2020] (name, id, aruid, out_native_window) => (native_window_size: usize))
     }
 
-    fn create_stray_layer(&mut self, flags: BitFlags<LayerFlags>, display_id: DisplayId, out_native_window_buf: *const u8, out_native_window_size: usize) -> Result<(LayerId, usize)> {
-        let layer_id: LayerId;
-        let native_window_size: usize;
-        ipc_client_session_send_request_command!([self.session; 2030; false] => {
-            In {
-                layer_flags: BitFlags<LayerFlags> = flags,
-                pad: u32 = 0,
-                display_id: DisplayId = display_id
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (out_native_window_buf, out_native_window_size) => ipc::BufferAttribute::Out | ipc::BufferAttribute::MapAlias
-            };
-            Out {
-                layer_id: LayerId => layer_id,
-                native_window_size: usize => native_window_size
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok((layer_id, native_window_size))
+    fn create_stray_layer(&mut self, flags: LayerFlags, display_id: DisplayId, out_native_window: sf::OutMapAliasBuffer) -> Result<(LayerId, usize)> {
+        ipc_client_send_request_command!([self.session.session; 2030] (flags, display_id, out_native_window) => (id: LayerId, native_window_size: usize))
     }
 
-    fn destroy_stray_layer(&mut self, layer_id: LayerId) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 2031; false] => {
-            In {
-                layer_id: LayerId = layer_id
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    fn destroy_stray_layer(&mut self, id: LayerId) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 2031] (id) => ())
     }
 
-    fn get_display_vsync_event(&mut self, display_id: DisplayId) -> Result<svc::Handle> {
-        let event_handle: svc::Handle;
-        ipc_client_session_send_request_command!([self.session; 5202; false] => {
-            In {
-                display_id: DisplayId = display_id
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {
-                event_handle => ipc::HandleMode::Copy
-            };
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(event_handle)
+    fn get_display_vsync_event(&mut self, display_id: DisplayId) -> Result<sf::CopyHandle> {
+        ipc_client_send_request_command!([self.session.session; 5202] (display_id) => (event_handle: sf::CopyHandle))
     }
 }
 
-pub trait IRootService {
-    fn get_display_service<S: SessionObject>(&mut self, is_privileged: bool) -> Result<S>;
+impl server::IServer for ApplicationDisplayService {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_relay_service: 100,
+            open_display: 1010,
+            close_display: 1020,
+            open_layer: 2020,
+            create_stray_layer: 2030,
+            destroy_stray_layer: 2031,
+            get_display_vsync_event: 5202
+        }
+    }
 }
 
-session_object_define!(SystemRootService);
+pub struct SystemRootService {
+    session: service::Session
+}
 
-impl service::Service for SystemRootService {
+impl service::ISessionObject for SystemRootService {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
+
+impl IRootService for SystemRootService {
+    fn get_display_service(&mut self, mode: DisplayServiceMode) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 1] (mode) => (display_service: mem::Shared<ApplicationDisplayService>))
+    }
+}
+
+impl server::IServer for SystemRootService {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_display_service: 1
+        }
+    }
+}
+
+impl service::IService for SystemRootService {
     fn get_name() -> &'static str {
         nul!("vi:s")
     }
@@ -202,27 +104,5 @@ impl service::Service for SystemRootService {
 
     fn post_initialize(&mut self) -> Result<()> {
         Ok(())
-    }
-}
-
-impl IRootService for SystemRootService {
-    fn get_display_service<S: SessionObject>(&mut self, is_privileged: bool) -> Result<S> {
-        let display_srv: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 1; false] => {
-            In {
-                is_privileged: u32 = is_privileged as u32
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                display_srv
-            };
-        });
-        Ok(S::new(display_srv))
     }
 }

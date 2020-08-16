@@ -1,5 +1,6 @@
 #![no_std]
 #![allow(incomplete_features)]
+#![allow(non_snake_case)]
 #![feature(llvm_asm)]
 #![feature(global_asm)]
 #![feature(alloc_error_handler)]
@@ -7,7 +8,10 @@
 #![feature(const_generics)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(const_raw_ptr_deref)]
+#![feature(const_trait_impl)]
 #![feature(specialization)]
+#![feature(coerce_unsized)]
+#![feature(unsize)]
 #![macro_use]
 
 // Required assembly bits
@@ -57,3 +61,5 @@ pub mod input;
 pub mod vmem;
 
 pub mod arm;
+
+pub use paste;

@@ -1,22 +1,39 @@
 use crate::result::*;
+use crate::ipc::sf;
+use crate::ipc::server;
 use crate::service;
-use crate::service::SessionObject;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum Policy {
-    ErrorReportAndErrorScreen,
-    ErrorReport,
-    ErrorScreen,
+pub use crate::ipc::sf::fatal::*;
+
+pub struct Service {
+    session: service::Session
 }
 
-pub trait IService {
-    fn throw_with_policy(&mut self, rc: ResultCode, policy: Policy) -> Result<()>;
+impl service::ISessionObject for Service {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
 }
 
-session_object_define!(Service);
+impl IService for Service {
+    fn throw_with_policy(&mut self, rc: ResultCode, policy: Policy, process_id: sf::ProcessId) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 1] (rc, policy, process_id) => ())
+    }
+}
 
-impl service::Service for Service {
+impl server::IServer for Service {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            throw_with_policy: 1
+        }
+    }
+}
+
+impl service::IService for Service {
     fn get_name() -> &'static str {
         nul!("fatal:u")
     }
@@ -26,27 +43,6 @@ impl service::Service for Service {
     }
 
     fn post_initialize(&mut self) -> Result<()> {
-        Ok(())
-    }
-}
-
-impl IService for Service {
-    fn throw_with_policy(&mut self, rc: ResultCode, policy: Policy) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 1; true] => {
-            In {
-                rc: ResultCode = rc,
-                policy: Policy = policy,
-                process_id_holder: u64 = 0
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
         Ok(())
     }
 }

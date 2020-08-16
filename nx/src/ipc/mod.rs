@@ -5,7 +5,6 @@ use crate::thread;
 use core::ptr;
 use core::mem;
 use core::fmt;
-use enumflags2::BitFlags;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
@@ -416,20 +415,81 @@ impl DomainOutDataHeader {
     }
 }
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u8)]
-pub enum BufferAttribute {
-    In = 0b1,
-    Out = 0b10,
-    MapAlias = 0b100,
-    Pointer = 0b1000,
-    FixedSize = 0b10000,
-    AutoSelect = 0b100000,
-    MapTransferAllowsNonSecure = 0b1000000,
-    MapTransferAllowsNonDevice = 0b10000000,
+bit_enum! {
+    BufferAttribute (u8) {
+        In = bit!(0),
+        Out = bit!(1),
+        MapAlias = bit!(2),
+        Pointer = bit!(3),
+        FixedSize = bit!(4),
+        AutoSelect = bit!(5),
+        MapTransferAllowsNonSecure = bit!(6),
+        MapTransferAllowsNonDevice = bit!(7)
+    }
 }
 
 const MAX_COUNT: usize = 8;
+
+pub struct DataWalker {
+    ptr: *mut u8,
+    cur_offset: isize
+}
+
+impl DataWalker {
+    pub fn empty() -> Self {
+        Self { ptr: ptr::null_mut(), cur_offset: 0 }
+    }
+
+    pub fn new(ptr: *mut u8) -> Self {
+        Self { ptr: ptr, cur_offset: 0 }
+    }
+
+    pub fn advance<T>(&mut self) {
+        let align_of_type = core::mem::align_of::<T>() as isize;
+        self.cur_offset += align_of_type - 1;
+        self.cur_offset -= self.cur_offset % align_of_type;
+        self.cur_offset += core::mem::size_of::<T>() as isize;
+    }
+
+    pub fn advance_get<T>(&mut self) -> T {
+        unsafe {
+            let align_of_type = core::mem::align_of::<T>() as isize;
+            self.cur_offset += align_of_type - 1;
+            self.cur_offset -= self.cur_offset % align_of_type;
+            let offset = self.cur_offset;
+            self.cur_offset += core::mem::size_of::<T>() as isize;
+
+            let data_ref = self.ptr.offset(offset) as *const T;
+            data_ref.read_volatile()
+        }
+    }
+
+    pub fn advance_set<T>(&mut self, t: T) {
+        unsafe {
+            let align_of_type = core::mem::align_of::<T>() as isize;
+            self.cur_offset += align_of_type - 1;
+            self.cur_offset -= self.cur_offset % align_of_type;
+            let offset = self.cur_offset;
+            self.cur_offset += core::mem::size_of::<T>() as isize;
+
+            let data_ref = self.ptr.offset(offset) as *mut T;
+            data_ref.write_volatile(t);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.cur_offset = 0;
+    }
+
+    pub fn reset_with(&mut self, ptr: *mut u8) {
+        self.reset();
+        self.ptr = ptr;
+    }
+
+    pub fn get_offset(&self) -> isize {
+        self.cur_offset
+    }
+}
 
 pub struct CommandIn {
     pub send_process_id: bool,
@@ -467,10 +527,10 @@ impl CommandIn {
         }
     }
 
-    pub fn add_handle(&mut self, handle: svc::Handle, mode: HandleMode) {
-        match mode {
-            HandleMode::Copy => self.add_copy_handle(handle),
-            HandleMode::Move => self.add_move_handle(handle),
+    pub fn add_handle<const M: HandleMode>(&mut self, handle: sf::Handle<M>) {
+        match M {
+            HandleMode::Copy => self.add_copy_handle(handle.handle),
+            HandleMode::Move => self.add_move_handle(handle.handle),
         }
     }
 
@@ -539,11 +599,12 @@ impl CommandOut {
         Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
-    pub fn pop_handle(&mut self, mode: HandleMode) -> Result<svc::Handle> {
-        match mode {
-            HandleMode::Copy => self.pop_copy_handle(),
-            HandleMode::Move => self.pop_move_handle(),
-        }
+    pub fn pop_handle<const M: HandleMode>(&mut self) -> Result<sf::Handle<M>> {
+        let handle = match M {
+            HandleMode::Copy => sf::Handle::from(self.pop_copy_handle()?),
+            HandleMode::Move => sf::Handle::from(self.pop_move_handle()?),
+        };
+        Ok(handle)
     }
 
     pub fn pop_object(&mut self) -> Result<u32> {
@@ -628,56 +689,56 @@ impl CommandContext {
         }
     }
 
-    pub fn add_buffer(&mut self, buffer: *const u8, buffer_size: usize, buffer_attribute: BitFlags<BufferAttribute>) -> Result<()> {
-        let is_in = buffer_attribute.contains(BufferAttribute::In);
-        let is_out = buffer_attribute.contains(BufferAttribute::Out);
+    pub fn add_buffer<const A: BufferAttribute>(&mut self, buffer: sf::Buffer<A>) -> Result<()> {
+        let is_in = A.contains(BufferAttribute::In());
+        let is_out = A.contains(BufferAttribute::Out());
 
-        if buffer_attribute.contains(BufferAttribute::AutoSelect) {
+        if A.contains(BufferAttribute::AutoSelect()) {
             let pointer_buf_size = self.session.query_pointer_buffer_size()?;
-            let buffer_in_static = (pointer_buf_size > 0) && (buffer_size <= pointer_buf_size as usize);
+            let buffer_in_static = (pointer_buf_size > 0) && (buffer.size <= pointer_buf_size as usize);
             if is_in {
                 if buffer_in_static {
                     self.add_send_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal));
-                    self.add_send_static(SendStaticDescriptor::new(buffer, buffer_size, self.send_static_count as u32));
+                    self.add_send_static(SendStaticDescriptor::new(buffer.buf, buffer.size, self.send_static_count as u32));
                 }
                 else {
-                    self.add_send_buffer(BufferDescriptor::new(buffer, buffer_size, BufferFlags::Normal));
+                    self.add_send_buffer(BufferDescriptor::new(buffer.buf, buffer.size, BufferFlags::Normal));
                     self.add_send_static(SendStaticDescriptor::new(ptr::null(), 0, self.send_static_count as u32));
                 }
             }
             else if is_out {
                 if buffer_in_static {
                     self.add_receive_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal));
-                    self.add_receive_static(ReceiveStaticDescriptor::new(buffer, buffer_size));
-                    self.in_params.add_out_pointer_size(buffer_size as u16);
+                    self.add_receive_static(ReceiveStaticDescriptor::new(buffer.buf, buffer.size));
+                    self.in_params.add_out_pointer_size(buffer.size as u16);
                 }
                 else {
-                    self.add_receive_buffer(BufferDescriptor::new(buffer, buffer_size, BufferFlags::Normal));
+                    self.add_receive_buffer(BufferDescriptor::new(buffer.buf, buffer.size, BufferFlags::Normal));
                     self.add_receive_static(ReceiveStaticDescriptor::new(ptr::null(), 0));
                     self.in_params.add_out_pointer_size(0);
                 }
             }
         }
-        else if buffer_attribute.contains(BufferAttribute::Pointer) {
+        else if A.contains(BufferAttribute::Pointer()) {
             if is_in {
-                self.add_send_static(SendStaticDescriptor::new(buffer, buffer_size, self.send_static_count as u32));
+                self.add_send_static(SendStaticDescriptor::new(buffer.buf, buffer.size, self.send_static_count as u32));
             }
             else if is_out {
-                self.add_receive_static(ReceiveStaticDescriptor::new(buffer, buffer_size));
-                if !buffer_attribute.contains(BufferAttribute::FixedSize) {
-                    self.in_params.add_out_pointer_size(buffer_size as u16);
+                self.add_receive_static(ReceiveStaticDescriptor::new(buffer.buf, buffer.size));
+                if !A.contains(BufferAttribute::FixedSize()) {
+                    self.in_params.add_out_pointer_size(buffer.size as u16);
                 }
             }
         }
-        else if buffer_attribute.contains(BufferAttribute::MapAlias) {
+        else if A.contains(BufferAttribute::MapAlias()) {
             let mut flags = BufferFlags::Normal;
-            if buffer_attribute.contains(BufferAttribute::MapTransferAllowsNonSecure) {
+            if A.contains(BufferAttribute::MapTransferAllowsNonSecure()) {
                 flags = BufferFlags::NonSecure;
             }
-            else if buffer_attribute.contains(BufferAttribute::MapTransferAllowsNonDevice){
+            else if A.contains(BufferAttribute::MapTransferAllowsNonDevice()) {
                 flags = BufferFlags::NonDevice;
             }
-            let buf_desc = BufferDescriptor::new(buffer, buffer_size, flags);
+            let buf_desc = BufferDescriptor::new(buffer.buf, buffer.size, flags);
             if is_in && is_out {
                 self.add_exchange_buffer(buf_desc);
             }
@@ -699,8 +760,8 @@ impl CommandContext {
             session = Session::from_object_id(self.session.handle, object);
         }
         else {
-            let handle = self.out_params.pop_handle(HandleMode::Move)?;
-            session = Session::from_handle(handle);
+            let handle = self.out_params.pop_handle::<{HandleMode::Move}>()?;
+            session = Session::from_handle(handle.handle);
         }
         Ok(session)
     }
@@ -749,140 +810,8 @@ pub const fn get_aligned_data_offset(data_words_offset: *mut u8, base_offset: *m
     }
 }
 
-// IPC command argument types
-
-pub struct Buffer<const A: BufferAttribute> {
-    pub buf: *const u8,
-    pub size: usize
-}
-
-impl<const A: BufferAttribute> Buffer<A> {
-    pub const fn from_const<T>(buf: *const T, size: usize) -> Self {
-        Self { buf: buf as *const u8, size: size }
-    }
-
-    pub const fn from_mut<T>(buf: *mut T, size: usize) -> Self {
-        Self { buf: buf as *const u8, size: size }
-    }
-
-    pub const fn from_var<T>(var: &T) -> Self {
-        Self { buf: var as *const T as *const u8, size: mem::size_of::<T>() }
-    }
-
-    pub const fn get_as<T>(&self) -> &'static T {
-        unsafe {
-            &*(self.buf as *const T)
-        }
-    }
-}
-
-pub struct Handle<const M: HandleMode> {
-    handle: svc::Handle
-}
-
-impl<const M: HandleMode> Handle<M> {
-    pub const fn from(handle: svc::Handle) -> Self {
-        Self { handle: handle }
-    }
-
-    pub const fn get_value(&self) -> svc::Handle {
-        self.handle
-    }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u8)]
-pub enum CommandParameter {
-    Raw,
-    Buffer,
-    Handle,
-    Session
-}
-
-pub trait CommandParameterDeserialize<T> {
-    fn deserialize() -> CommandParameter;
-}
-
-pub struct CommandParameterDeserializer<T> {
-    phantom: core::marker::PhantomData<T>
-}
-
-impl<T> CommandParameterDeserialize<T> for CommandParameterDeserializer<T> {
-    default fn deserialize() -> CommandParameter {
-        CommandParameter::Raw
-    }
-}
-
-impl<const A: BufferAttribute> CommandParameterDeserialize<Buffer<A>> for CommandParameterDeserializer<Buffer<A>> {
-    default fn deserialize() -> CommandParameter {
-        CommandParameter::Buffer
-    }
-}
-
-impl<const M: HandleMode> CommandParameterDeserialize<Handle<M>> for CommandParameterDeserializer<Handle<M>> {
-    default fn deserialize() -> CommandParameter {
-        CommandParameter::Handle
-    }
-}
-
-impl CommandParameterDeserialize<Session> for CommandParameterDeserializer<Session> {
-    default fn deserialize() -> CommandParameter {
-        CommandParameter::Session
-    }
-}
-
-pub struct DataWalker {
-    ptr: *mut u8,
-    cur_offset: isize
-}
-
-impl DataWalker {
-    pub fn new(ptr: *mut u8) -> Self {
-        Self { ptr: ptr, cur_offset: 0 }
-    }
-
-    pub fn advance<T: Copy>(&mut self) {
-        let align_of_type = core::mem::align_of::<T>() as isize;
-        self.cur_offset += align_of_type - 1;
-        self.cur_offset -= self.cur_offset % align_of_type;
-        self.cur_offset += core::mem::size_of::<T>() as isize;
-    }
-
-    pub fn advance_get<T: Copy>(&mut self) -> T {
-        unsafe {
-            let align_of_type = core::mem::align_of::<T>() as isize;
-            self.cur_offset += align_of_type - 1;
-            self.cur_offset -= self.cur_offset % align_of_type;
-            let offset = self.cur_offset;
-            self.cur_offset += core::mem::size_of::<T>() as isize;
-
-            let data_ref = self.ptr.offset(offset) as *const T;
-            data_ref.read_volatile()
-        }
-    }
-
-    pub fn advance_set<T: Copy>(&mut self, t: T) {
-        unsafe {
-            let align_of_type = core::mem::align_of::<T>() as isize;
-            self.cur_offset += align_of_type - 1;
-            self.cur_offset -= self.cur_offset % align_of_type;
-            let offset = self.cur_offset;
-            self.cur_offset += core::mem::size_of::<T>() as isize;
-
-            let data_ref = self.ptr.offset(offset) as *mut T;
-            data_ref.write_volatile(t);
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.cur_offset = 0;
-    }
-
-    pub fn get_offset(&self) -> isize {
-        self.cur_offset
-    }
-}
-
 pub mod client;
 
 pub mod server;
+
+pub mod sf;

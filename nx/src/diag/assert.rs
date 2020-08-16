@@ -1,19 +1,18 @@
 use crate::result::*;
 use crate::svc;
 use crate::crt0;
+use crate::ipc::sf;
 use crate::service;
 use crate::service::fatal;
 use crate::service::fatal::IService;
 use core::ptr;
-use enumflags2::BitFlags;
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u8)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum AssertMode {
-    ProcessExit = 0b1,
-    FatalThrow = 0b10,
-    SvcBreak = 0b100,
-    Panic = 0b1000,
+    ProcessExit,
+    FatalThrow,
+    SvcBreak,
+    Panic
 }
 
 pub fn assert(mode: AssertMode, rc: ResultCode) -> ! {
@@ -24,8 +23,8 @@ pub fn assert(mode: AssertMode, rc: ResultCode) -> ! {
             },
             AssertMode::FatalThrow => {
                 match service::new_service_object::<fatal::Service>() {
-                    Ok(mut fatal) => {
-                        let _ = fatal.throw_with_policy(rc, fatal::Policy::ErrorScreen);
+                    Ok(fatal) => {
+                        let _ = fatal.get().throw_with_policy(rc, fatal::Policy::ErrorScreen, sf::ProcessId::new());
                     },
                     _ => {}
                 }

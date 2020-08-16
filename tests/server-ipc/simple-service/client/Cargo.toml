@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 nx = { path = "../../../../nx" }
+paste = "1.0"

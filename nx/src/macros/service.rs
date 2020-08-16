@@ -1,18 +1,18 @@
 #![macro_use]
 
 #[macro_export]
-macro_rules! session_object_define {
+macro_rules! service_define_session_object {
     ($name:ident) => {
         pub struct $name {
             session: $crate::ipc::Session,
         }
         
-        impl $crate::service::SessionObject for $name {
+        impl $crate::service::ISessionObject for $name {
             fn new(session: $crate::ipc::Session) -> Self {
                 Self { session: session }
             }
 
-            fn get_session(&self) -> $crate::ipc::Session {
+            fn get_session(&mut self) -> $crate::ipc::Session {
                 self.session
             }
 
@@ -25,12 +25,6 @@ macro_rules! session_object_define {
         
             fn close(&mut self) {
                 self.session.close()
-            }
-        }
-
-        impl $crate::service::SharedSessionObject for $name {
-            fn shared(session: $crate::ipc::Session) -> $crate::mem::SharedObject<Self> {
-                $crate::mem::make_shared(Self::new(session))
             }
         }
         

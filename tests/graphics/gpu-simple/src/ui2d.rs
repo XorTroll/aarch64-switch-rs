@@ -70,7 +70,7 @@ impl RGBA8 {
     }
 }
 
-pub struct SurfaceEx<NS: nv::INvDrvService> {
+pub struct SurfaceEx<NS: nv::INvDrvService + 'static> {
     gpu_buf: *mut u32,
     gpu_buf_size: usize,
     linear_buf: *mut u32,
@@ -80,7 +80,7 @@ pub struct SurfaceEx<NS: nv::INvDrvService> {
     surface_ref: gpu::surface::Surface<NS>,
 }
 
-impl<NS: nv::INvDrvService> SurfaceEx<NS> {
+impl<NS: nv::INvDrvService + 'static> SurfaceEx<NS> {
     pub fn from(surface: gpu::surface::Surface<NS>) -> Self {
         let aligned_width = surface.compute_stride() as usize;
         let aligned_height = ((surface.get_height() + 7) & !7) as usize;

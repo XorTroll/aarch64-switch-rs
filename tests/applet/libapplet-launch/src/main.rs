@@ -2,11 +2,10 @@
 #![no_main]
 
 #[macro_use]
-extern crate nx;
-
-#[macro_use]
 extern crate alloc;
 
+#[macro_use]
+extern crate nx;
 use nx::svc;
 use nx::arm;
 use nx::result::*;
@@ -14,6 +13,8 @@ use nx::results;
 use nx::util;
 use nx::diag::assert;
 use nx::diag::log;
+use nx::diag::log::Logger;
+use nx::ipc::sf;
 use nx::service;
 use nx::service::applet;
 use nx::service::applet::IAllSystemAppletProxiesService;
@@ -40,49 +41,55 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct CommonArguments {
-    version: u32,
-    size: u32,
-    la_api_version: u32,
-    theme_color: u32,
-    play_startup_sound: bool,
-    pad: [u8; 7],
-    system_tick: u64
+    pub version: u32,
+    pub size: u32,
+    pub la_api_version: u32,
+    pub theme_color: u32,
+    pub play_startup_sound: bool,
+    pub pad: [u8; 7],
+    pub system_tick: u64
+}
+
+impl CommonArguments {
+    pub fn new(version: u32, la_api_version: u32, theme_color: u32, play_startup_sound: bool) -> Self {
+        Self { version: version, size: core::mem::size_of::<Self>() as u32, la_api_version: la_api_version, theme_color: theme_color, play_startup_sound: play_startup_sound, pad: [0; 7], system_tick: arm::get_system_tick() }
+    }
 }
 
 pub fn applet_test() -> Result<()> {
-    let mut applet_proxy_srv = service::new_service_object::<applet::AllSystemAppletProxiesService>()?;
+    let applet_proxy_srv = service::new_service_object::<applet::AllSystemAppletProxiesService>()?;
+    
     let attr: applet::AppletAttribute = unsafe { core::mem::zeroed() };
-    let mut lib_applet_proxy: applet::LibraryAppletProxy = applet_proxy_srv.open_library_applet_proxy(attr)?;
-    let mut lib_applet_creator: applet::LibraryAppletCreator = lib_applet_proxy.get_library_applet_creator()?;
-    let mut lib_applet_accessor: applet::LibraryAppletAccessor = lib_applet_creator.create_library_applet(applet::AppletId::PlayerSelect, applet::LibraryAppletMode::AllForeground)?;
+    let lib_applet_proxy = applet_proxy_srv.get().open_library_applet_proxy(sf::ProcessId::new(), sf::Handle::from(svc::CURRENT_PROCESS_PSEUDO_HANDLE), sf::Buffer::from_var(&attr))?.to::<applet::LibraryAppletProxy>();
+    let lib_applet_creator = lib_applet_proxy.get().get_library_applet_creator()?.to::<applet::LibraryAppletCreator>();
+    let lib_applet_accessor = lib_applet_creator.get().create_library_applet(applet::AppletId::PlayerSelect, applet::LibraryAppletMode::AllForeground)?.to::<applet::LibraryAppletAccessor>();
 
     {
-        let storage_size = core::mem::size_of::<CommonArguments>();
-        let common_args = CommonArguments { version: 1, size: storage_size as u32, la_api_version: 0x20000, theme_color: 0, play_startup_sound: false, pad: [0; 7], system_tick: arm::get_system_tick() };
-        let mut storage: applet::Storage = lib_applet_creator.create_storage(core::mem::size_of::<CommonArguments>())?;
+        let common_args = CommonArguments::new(1, 0x20000, 0, false);
+        let storage = lib_applet_creator.get().create_storage(common_args.size as usize)?.to::<applet::Storage>();
         {
-            let mut storage_accessor: applet::StorageAccessor = storage.open()?;
-            storage_accessor.write(0, &common_args as *const _ as *const u8, storage_size)?;
+            let storage_accessor = storage.get().open()?.to::<applet::StorageAccessor>();
+            storage_accessor.get().write(0, sf::Buffer::from_var(&common_args))?;
         }
-        lib_applet_accessor.push_in_data(&storage)?;
+        lib_applet_accessor.get().push_in_data(storage)?;
     }
 
     {
         let mut data: [u8; 0xA0] = [0; 0xA0];
         data[0x96] = 1;
-        let mut storage: applet::Storage = lib_applet_creator.create_storage(0xA0)?;
+        let storage = lib_applet_creator.get().create_storage(data.len())?.to::<applet::Storage>();
         {
-            let mut storage_accessor: applet::StorageAccessor = storage.open()?;
-            storage_accessor.write(0, &data as *const _ as *const u8, 0xA0)?;
+            let storage_accessor = storage.get().open()?.to::<applet::StorageAccessor>();
+            storage_accessor.get().write(0, sf::Buffer::from_const(data.as_ptr(), data.len()))?;
         }
-        lib_applet_accessor.push_in_data(&storage)?;
+        lib_applet_accessor.get().push_in_data(storage)?;
     }
 
-    let event_handle = lib_applet_accessor.get_applet_state_changed_event()?;
-    lib_applet_accessor.start()?;
-    svc::wait_synchronization(&event_handle, 1, -1)?;
+    let event_handle = lib_applet_accessor.get().get_applet_state_changed_event()?;
+    lib_applet_accessor.get().start()?;
+    svc::wait_synchronization(&event_handle.handle, 1, -1)?;
 
-    svc::close_handle(event_handle)?;
+    svc::close_handle(event_handle.handle)?;
 
     Ok(())
 }
@@ -90,7 +97,7 @@ pub fn applet_test() -> Result<()> {
 #[no_mangle]
 pub fn main() -> Result<()> {
     if let Err(rc) = applet_test() {
-        assert::assert(assert::AssertMode::FatalThrow, rc);
+        diag_result_log_assert!(log::LmLogger, assert::AssertMode::FatalThrow => rc);
     }
 
     Ok(())

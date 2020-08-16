@@ -3,6 +3,7 @@ use crate::results;
 use crate::gpu::binder;
 use crate::gpu::ioctl;
 use crate::svc;
+use crate::ipc::sf;
 use crate::service::nv;
 use crate::service::vi;
 use crate::service::dispdrv;
@@ -14,12 +15,12 @@ extern crate alloc;
 
 const MAX_BUFFERS: usize = 8;
 
-pub type LayerDestroyFn = fn(vi::LayerId, mem::SharedObject<vi::ApplicationDisplayService>) -> Result<()>;
+pub type LayerDestroyFn = fn(vi::LayerId, mem::Shared<vi::ApplicationDisplayService>) -> Result<()>;
 
-pub struct Surface<NS: nv::INvDrvService> {
+pub struct Surface<NS: nv::INvDrvService + 'static> {
     binder: binder::Binder,
-    nvdrv_srv: mem::SharedObject<NS>,
-    application_display_service: mem::SharedObject<vi::ApplicationDisplayService>,
+    nvdrv_srv: mem::Shared<NS>,
+    application_display_service: mem::Shared<vi::ApplicationDisplayService>,
     width: u32,
     height: u32,
     buffer_data: *mut u8,
@@ -34,21 +35,21 @@ pub struct Surface<NS: nv::INvDrvService> {
     display_id: vi::DisplayId,
     layer_id: vi::LayerId,
     layer_destroy_fn: LayerDestroyFn,
-    nvhost_fd: u32,
-    nvmap_fd: u32,
-    nvhostctrl_fd: u32,
-    vsync_event_handle: u32,
-    buffer_event_handle: u32
+    nvhost_fd: nv::Fd,
+    nvmap_fd: nv::Fd,
+    nvhostctrl_fd: nv::Fd,
+    vsync_event_handle: svc::Handle,
+    buffer_event_handle: svc::Handle
 }
 
 impl<NS: nv::INvDrvService> Surface<NS> {
-    pub fn new(binder_handle: i32, nvdrv_srv: mem::SharedObject<NS>, application_display_service: mem::SharedObject<vi::ApplicationDisplayService>, nvhost_fd: u32, nvmap_fd: u32, nvhostctrl_fd: u32, hos_binder_driver: mem::SharedObject<dispdrv::HOSBinderDriver>, buffer_count: u32, display_id: vi::DisplayId, layer_id: vi::LayerId, width: u32, height: u32, color_fmt: ColorFormat, pixel_fmt: PixelFormat, layout: Layout, layer_destroy_fn: LayerDestroyFn) -> Result<Self> {
+    pub fn new(binder_handle: i32, nvdrv_srv: mem::Shared<NS>, application_display_service: mem::Shared<vi::ApplicationDisplayService>, nvhost_fd: u32, nvmap_fd: u32, nvhostctrl_fd: u32, hos_binder_driver: mem::Shared<dispdrv::HOSBinderDriver>, buffer_count: u32, display_id: vi::DisplayId, layer_id: vi::LayerId, width: u32, height: u32, color_fmt: ColorFormat, pixel_fmt: PixelFormat, layout: Layout, layer_destroy_fn: LayerDestroyFn) -> Result<Self> {
         let mut binder = binder::Binder::new(binder_handle, hos_binder_driver)?;
         binder.increase_refcounts()?;
         let _ = binder.connect(ConnectionApi::Cpu, false)?;
-        let vsync_event_handle = application_display_service.borrow_mut().get_display_vsync_event(display_id)?;
-        let buffer_event_handle = binder.get_native_handle(0xF)?;
-        let mut surface = Self { binder: binder, nvdrv_srv: nvdrv_srv, application_display_service: application_display_service, width: width, height: height, buffer_data: ptr::null_mut(), buffer_alloc_layout: alloc::alloc::Layout::new::<u8>(), single_buffer_size: 0, buffer_count: buffer_count, slot_has_requested: [false; MAX_BUFFERS], graphic_buf: unsafe { cmem::zeroed() }, color_fmt: color_fmt, pixel_fmt: pixel_fmt, layout: layout, display_id: display_id, layer_id: layer_id, layer_destroy_fn: layer_destroy_fn, nvhost_fd: nvhost_fd, nvmap_fd: nvmap_fd, nvhostctrl_fd: nvhostctrl_fd, vsync_event_handle: vsync_event_handle, buffer_event_handle: buffer_event_handle };
+        let vsync_event_handle = application_display_service.get().get_display_vsync_event(display_id)?;
+        let buffer_event_handle = binder.get_native_handle(dispdrv::NativeHandleType::BufferEvent)?;
+        let mut surface = Self { binder: binder, nvdrv_srv: nvdrv_srv, application_display_service: application_display_service, width: width, height: height, buffer_data: ptr::null_mut(), buffer_alloc_layout: alloc::alloc::Layout::new::<u8>(), single_buffer_size: 0, buffer_count: buffer_count, slot_has_requested: [false; MAX_BUFFERS], graphic_buf: unsafe { cmem::zeroed() }, color_fmt: color_fmt, pixel_fmt: pixel_fmt, layout: layout, display_id: display_id, layer_id: layer_id, layer_destroy_fn: layer_destroy_fn, nvhost_fd: nvhost_fd, nvmap_fd: nvmap_fd, nvhostctrl_fd: nvhostctrl_fd, vsync_event_handle: vsync_event_handle.handle, buffer_event_handle: buffer_event_handle.handle };
         surface.initialize()?;
         Ok(surface)
     }
@@ -60,10 +61,7 @@ impl<NS: nv::INvDrvService> Surface<NS> {
             ioctl::IoctlFd::NvHostCtrl => self.nvhostctrl_fd,
         };
 
-        let buf = i as *mut I as *const u8;
-        let buf_size = cmem::size_of::<I>();
-
-        let err = self.nvdrv_srv.borrow_mut().ioctl(fd, I::get_id(), buf, buf_size, buf, buf_size)?;
+        let err = self.nvdrv_srv.get().ioctl(fd, I::get_id(), sf::Buffer::from_var(i), sf::Buffer::from_var(i))?;
         nv::convert_error_code(err)
     }
 
@@ -77,7 +75,7 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         let aligned_height = align_height(self.height);
         let stride = aligned_width;
         self.single_buffer_size = (aligned_width_bytes * aligned_height) as usize;
-        let usage = GraphicsAllocatorUsage::HardwareComposer | GraphicsAllocatorUsage::HardwareRender | GraphicsAllocatorUsage::HardwareTexture;
+        let usage = GraphicsAllocatorUsage::HardwareComposer() | GraphicsAllocatorUsage::HardwareRender() | GraphicsAllocatorUsage::HardwareTexture();
         let buf_size = self.buffer_count as usize * self.single_buffer_size;
         self.buffer_alloc_layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(buf_size, mem::PAGE_ALIGNMENT) };
 
@@ -90,7 +88,7 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         self.do_ioctl(&mut ioctl_getid)?;
 
         self.buffer_data = unsafe { alloc::alloc::alloc(self.buffer_alloc_layout) };
-        svc::set_memory_attribute(self.buffer_data, buf_size, 8, BitFlags::from(svc::MemoryAttribute::Uncached))?;
+        svc::set_memory_attribute(self.buffer_data, buf_size, 8, svc::MemoryAttribute::Uncached())?;
 
         let mut ioctl_alloc: ioctl::NvMapAlloc = unsafe { cmem::zeroed() };
         ioctl_alloc.handle = ioctl_create.handle;
@@ -143,12 +141,12 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         self.binder.decrease_refcounts()?;
 
         let buf_size = self.buffer_count as usize * self.single_buffer_size;
-        svc::set_memory_attribute(self.buffer_data, buf_size, 0, BitFlags::empty())?;
+        svc::set_memory_attribute(self.buffer_data, buf_size, 0, svc::MemoryAttribute::None())?;
         
         unsafe { alloc::alloc::dealloc(self.buffer_data, self.buffer_alloc_layout); }
         (self.layer_destroy_fn)(self.layer_id, self.application_display_service.clone())?;
 
-        self.application_display_service.borrow_mut().close_display(self.display_id)?;
+        self.application_display_service.get().close_display(self.display_id)?;
 
         svc::close_handle(self.buffer_event_handle)?;
         svc::close_handle(self.vsync_event_handle)

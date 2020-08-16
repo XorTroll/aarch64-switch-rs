@@ -15,39 +15,35 @@ use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
 use nx::service;
-use nx::service::SessionObject;
 
 use core::panic;
 
+// Same interface as /server project
 pub trait IDemoService {
-    fn sample_cmd_1(&mut self, in_value: u32) -> Result<u64>;
+    ipc_interface_define_command!(sample_cmd_1: (in_value: u32) => (out_value: u64));
 }
 
-session_object_define!(DemoService);
+pub struct DemoService {
+    session: service::Session
+}
 
-impl IDemoService for DemoService {
-    fn sample_cmd_1(&mut self, in_value: u32) -> Result<u64> {
-        let out: u64;
-        ipc_client_session_send_request_command!([self.session; 123; false] => {
-            In {
-                in_value: u32 = in_value
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                out: u64 => out
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(out)
+impl service::ISessionObject for DemoService {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
     }
 }
 
-impl service::Service for DemoService {
+impl IDemoService for DemoService {
+    fn sample_cmd_1(&mut self, in_value: u32) -> Result<u64> {
+        ipc_client_send_request_command!([self.session.session; 123] (in_value) => (out_value: u64))
+    }
+}
+
+impl service::IService for DemoService {
     fn get_name() -> &'static str {
         nul!("dmo-srv")
     }
@@ -74,10 +70,10 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
 }
 
 pub fn client_main() -> Result<()> {
-    let mut demosrv = service::new_service_object::<DemoService>()?;
+    let demosrv = service::new_service_object::<DemoService>()?;
 
-    let mut test_command_with_value = |val: u32| {
-        match demosrv.sample_cmd_1(val) {
+    let test_command_with_value = |val: u32| {
+        match demosrv.get().sample_cmd_1(val) {
             Ok(value) => diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "Out value for {}: {}", val, value),
             Err(rc) => diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "Error: {0} - {0:?}", rc),
         };
@@ -92,7 +88,7 @@ pub fn client_main() -> Result<()> {
 #[no_mangle]
 pub fn main() -> Result<()> {
     match client_main() {
-        Err(rc) => diag_log_result_assert!(log::LmLogger, assert::AssertMode::FatalThrow => rc),
+        Err(rc) => diag_result_log_assert!(log::LmLogger, assert::AssertMode::FatalThrow => rc),
         _ => {}
     }
 

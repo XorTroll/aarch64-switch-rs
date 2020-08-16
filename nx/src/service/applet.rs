@@ -1,385 +1,271 @@
 use crate::result::*;
-use crate::ipc;
-use crate::svc;
+use crate::ipc::sf;
+use crate::ipc::server;
 use crate::service;
-use crate::service::SessionObject;
-use core::mem;
+use crate::mem;
 
-pub type AppletResourceUserId = u64;
+pub use crate::ipc::sf::applet::*;
 
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub struct AppletAttribute {
-    flag: u8,
-    reserved: [u8; 0x7F]
+pub struct StorageAccessor {
+    session: service::Session
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum ScreenShotPermission {
-    Inherit,
-    Enable,
-    Disable
+impl service::ISessionObject for StorageAccessor {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
 }
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum AppletId {
-    Application = 0x1,
-    OverlayDisp = 0x2,
-    Qlaunch = 0x3,
-    Starter = 0x4,
-    Auth = 0xA,
-    Cabinet = 0xB,
-    Controller = 0xC,
-    DataErase = 0xD,
-    Error = 0xE,
-    NetConnect = 0xF,
-    PlayerSelect = 0x10,
-    Swkbd = 0x11,
-    MiiEdit = 0x12,
-    Web = 0x13,
-    Shop = 0x14,
-    PhotoViewer = 0x15,
-    Set = 0x16,
-    OfflineWeb = 0x17,
-    LoginShare = 0x18,
-    WifiWebAuth = 0x19,
-    MyPage = 0x1A,
-    // TODO: add non-retail IDs too?
-}
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u32)]
-pub enum LibraryAppletMode {
-    AllForeground,
-    Background,
-    NoUi,
-    BackgroundIndirectDisplay,
-    AllForegroundInitiallyHidden,
-}
-
-pub trait IStorageAccessor {
-    fn get_size(&mut self) -> Result<usize>;
-    fn write(&mut self, offset: usize, buf: *const u8, buf_size: usize) -> Result<()>;
-    fn read(&mut self, offset: usize, buf: *const u8, buf_size: usize) -> Result<()>;
-}
-
-session_object_define!(StorageAccessor);
 
 impl IStorageAccessor for StorageAccessor {
     fn get_size(&mut self) -> Result<usize> {
-        let size: usize;
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                size: usize => size
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(size)
+        ipc_client_send_request_command!([self.session.session; 0] () => (size: usize))
     }
 
-    fn write(&mut self, offset: usize, buf: *const u8, buf_size: usize) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 10; false] => {
-            In {
-                offset: usize = offset
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (buf, buf_size) => ipc::BufferAttribute::In | ipc::BufferAttribute::AutoSelect
-            };
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    fn write(&mut self, offset: usize, buf: sf::InAutoSelectBuffer) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 10] (offset, buf) => ())
     }
 
-    fn read(&mut self, offset: usize, buf: *const u8, buf_size: usize) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 11; false] => {
-            In {
-                offset: usize = offset
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (buf, buf_size) => ipc::BufferAttribute::Out | ipc::BufferAttribute::AutoSelect
-            };
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    fn read(&mut self, offset: usize, buf: sf::OutAutoSelectBuffer) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 11] (offset, buf) => ())
     }
 }
 
-pub trait IStorage {
-    fn open<S: service::SessionObject>(&mut self) -> Result<S>;
+impl server::IServer for StorageAccessor {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_size: 0,
+            write: 10,
+            read: 11
+        }
+    }
 }
 
-session_object_define!(Storage);
+pub struct Storage {
+    session: service::Session
+}
+
+impl service::ISessionObject for Storage {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
 impl IStorage for Storage {
-    fn open<S: service::SessionObject>(&mut self) -> Result<S> {
-        let storage_accessor: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                storage_accessor
-            };
-        });
-        Ok(S::new(storage_accessor))
+    fn open(&mut self) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 0] () => (storage_accessor: mem::Shared<StorageAccessor>))
     }
 }
 
-pub trait ILibraryAppletAccessor {
-    fn get_applet_state_changed_event(&mut self) -> Result<svc::Handle>;
-    fn start(&mut self) -> Result<()>;
-    fn push_in_data<S: service::SessionObject>(&mut self, storage: &S) -> Result<()>;
+impl server::IServer for Storage {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            open: 0
+        }
+    }
 }
 
-session_object_define!(LibraryAppletAccessor);
+pub struct LibraryAppletAccessor {
+    session: service::Session
+}
+
+impl service::ISessionObject for LibraryAppletAccessor {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
 impl ILibraryAppletAccessor for LibraryAppletAccessor {
-    fn get_applet_state_changed_event(&mut self) -> Result<svc::Handle> {
-        let applet_state_changed_event: svc::Handle;
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {
-                applet_state_changed_event => ipc::HandleMode::Copy
-            };
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(applet_state_changed_event)
+    fn get_applet_state_changed_event(&mut self) -> Result<sf::CopyHandle> {
+        ipc_client_send_request_command!([self.session.session; 0] () => (applet_state_changed_event: sf::CopyHandle))
     }
 
     fn start(&mut self) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 10; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+        ipc_client_send_request_command!([self.session.session; 10] () => ())
     }
 
-    fn push_in_data<S: service::SessionObject>(&mut self, storage: &S) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 100; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {
-                storage.get_session()
-            };
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    fn push_in_data(&mut self, storage: mem::Shared<dyn service::ISessionObject>) -> Result<()> {
+        ipc_client_send_request_command!([self.session.session; 100] (storage) => ())
     }
 }
 
-pub trait ILibraryAppletCreator {
-    fn create_library_applet<S: service::SessionObject>(&mut self, id: AppletId, mode: LibraryAppletMode) -> Result<S>;
-    fn create_storage<S: service::SessionObject>(&mut self, size: usize) -> Result<S>;
+impl server::IServer for LibraryAppletAccessor {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_applet_state_changed_event: 0,
+            start: 10,
+            push_in_data: 100
+        }
+    }
 }
 
-session_object_define!(LibraryAppletCreator);
+pub struct LibraryAppletCreator {
+    session: service::Session
+}
+
+impl service::ISessionObject for LibraryAppletCreator {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
 impl ILibraryAppletCreator for LibraryAppletCreator {
-    fn create_library_applet<S: service::SessionObject>(&mut self, id: AppletId, mode: LibraryAppletMode) -> Result<S> {
-        let library_applet_accessor: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {
-                id: AppletId = id,
-                mode: LibraryAppletMode = mode
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                library_applet_accessor
-            };
-        });
-        Ok(S::new(library_applet_accessor))
+    fn create_library_applet(&mut self, id: AppletId, mode: LibraryAppletMode) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 0] (id, mode) => (library_applet_accessor: mem::Shared<LibraryAppletAccessor>))
     }
 
-    fn create_storage<S: service::SessionObject>(&mut self, size: usize) -> Result<S> {
-        let storage: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 10; false] => {
-            In {
-                size: usize = size
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                storage
-            };
-        });
-        Ok(S::new(storage))
+    fn create_storage(&mut self, size: usize) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 10] (size) => (storage: mem::Shared<Storage>))
     }
 }
 
-pub trait IWindowController {
-    fn acquire_foreground_rights(&mut self) -> Result<()>;
+impl server::IServer for LibraryAppletCreator {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            create_library_applet: 0,
+            create_storage: 10
+        }
+    }
 }
 
-session_object_define!(WindowController);
+pub struct WindowController {
+    session: service::Session
+}
+
+impl service::ISessionObject for WindowController {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
 impl IWindowController for WindowController {
     fn acquire_foreground_rights(&mut self) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 10; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+        ipc_client_send_request_command!([self.session.session; 10] () => ())
     }
 }
 
-pub trait ISelfController {
-    fn set_screenshot_permission(&mut self, permission: ScreenShotPermission) -> Result<()>;
+impl server::IServer for WindowController {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            acquire_foreground_rights: 10
+        }
+    }
 }
 
-session_object_define!(SelfController);
+pub struct SelfController {
+    session: service::Session
+}
+
+impl service::ISessionObject for SelfController {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
 impl ISelfController for SelfController {
     fn set_screenshot_permission(&mut self, permission: ScreenShotPermission) -> Result<()> {
-        ipc_client_session_send_request_command!([self.session; 10; false] => {
-            In {
-                permission: ScreenShotPermission = permission
-            };
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+        ipc_client_send_request_command!([self.session.session; 10] (permission) => ())
     }
 }
 
-pub trait ILibraryAppletProxy {
-    fn get_self_controller<S: service::SessionObject>(&mut self) -> Result<S>;
-    fn get_window_controller<S: service::SessionObject>(&mut self) -> Result<S>;
-    fn get_library_applet_creator<S: service::SessionObject>(&mut self) -> Result<S>;
+impl server::IServer for SelfController {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            set_screenshot_permission: 10
+        }
+    }
 }
 
-session_object_define!(LibraryAppletProxy);
+pub struct LibraryAppletProxy {
+    session: service::Session
+}
+
+impl service::ISessionObject for LibraryAppletProxy {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
 impl ILibraryAppletProxy for LibraryAppletProxy {
-    fn get_self_controller<S: service::SessionObject>(&mut self) -> Result<S> {
-        let self_controller: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 1; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                self_controller
-            };
-        });
-        Ok(S::new(self_controller))
+    fn get_self_controller(&mut self) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 1] () => (self_controller: mem::Shared<SelfController>))
     }
 
-    fn get_window_controller<S: service::SessionObject>(&mut self) -> Result<S> {
-        let window_controller: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 2; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                window_controller
-            };
-        });
-        Ok(S::new(window_controller))
+    fn get_window_controller(&mut self) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 2] () => (window_controller: mem::Shared<WindowController>))
     }
 
-    fn get_library_applet_creator<S: service::SessionObject>(&mut self) -> Result<S> {
-        let library_applet_creator: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 11; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                library_applet_creator
-            };
-        });
-        Ok(S::new(library_applet_creator))
+    fn get_library_applet_creator(&mut self) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 11] () => (library_applet_creator: mem::Shared<LibraryAppletCreator>))
     }
 }
 
-pub trait IAllSystemAppletProxiesService {
-    fn open_library_applet_proxy<S: service::SessionObject>(&mut self, attr: AppletAttribute) -> Result<S>;
+impl server::IServer for LibraryAppletProxy {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_self_controller: 1,
+            get_window_controller: 2,
+            get_library_applet_creator: 11
+        }
+    }
 }
 
-session_object_define!(AllSystemAppletProxiesService);
+pub struct AllSystemAppletProxiesService {
+    session: service::Session
+}
 
-impl service::Service for AllSystemAppletProxiesService {
+impl service::ISessionObject for AllSystemAppletProxiesService {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
+
+impl IAllSystemAppletProxiesService for AllSystemAppletProxiesService {
+    fn open_library_applet_proxy(&mut self, process_id: sf::ProcessId, self_process_handle: sf::CopyHandle, applet_attribute: sf::InMapAliasBuffer) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        ipc_client_send_request_command!([self.session.session; 201] (process_id, self_process_handle, applet_attribute) => (library_applet_proxy: mem::Shared<LibraryAppletProxy>))
+    }
+}
+
+impl server::IServer for AllSystemAppletProxiesService {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            open_library_applet_proxy: 201
+        }
+    }
+}
+
+impl service::IService for AllSystemAppletProxiesService {
     fn get_name() -> &'static str {
         nul!("appletAE")
     }
@@ -390,31 +276,5 @@ impl service::Service for AllSystemAppletProxiesService {
 
     fn post_initialize(&mut self) -> Result<()> {
         Ok(())
-    }
-}
-
-impl IAllSystemAppletProxiesService for AllSystemAppletProxiesService {
-    fn open_library_applet_proxy<S: service::SessionObject>(&mut self, attr: AppletAttribute) -> Result<S> {
-        let library_applet_proxy: ipc::Session;
-        ipc_client_session_send_request_command!([self.session; 201; true] => {
-            In {
-                process_id_holder: u64 = 0
-            };
-            InHandles {
-                svc::CURRENT_PROCESS_PSEUDO_HANDLE => ipc::HandleMode::Copy
-            };
-            InObjects {};
-            InSessions {};
-            Buffers {
-                (&attr as *const _ as *const u8, mem::size_of::<AppletAttribute>()) => ipc::BufferAttribute::In | ipc::BufferAttribute::MapAlias
-            };
-            Out {};
-            OutHandles {};
-            OutObjects {};
-            OutSessions {
-                library_applet_proxy
-            };
-        });
-        Ok(S::new(library_applet_proxy))
     }
 }

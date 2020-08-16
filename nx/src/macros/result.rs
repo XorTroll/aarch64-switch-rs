@@ -55,7 +55,7 @@ macro_rules! result_return_unless {
     };
 
     ($cond:expr, $res:literal) => {
-        iresult_return_if!(!$cond, $res);
+        result_return_if!(!$cond, $res);
     };
 }
 

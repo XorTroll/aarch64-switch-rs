@@ -1,12 +1,13 @@
 use crate::thread;
 use crate::result::*;
 use crate::util;
+use crate::mem;
+use crate::ipc::sf;
 
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec::Vec;
-use enumflags2::BitFlags;
-use core::mem;
+use core::mem as cmem;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u8)]
@@ -45,6 +46,11 @@ pub trait Logger {
     fn log(&mut self, metadata: &LogMetadata);
 }
 
+pub fn log_with<L: Logger>(metadata: &LogMetadata) {
+    let mut logger = L::new();
+    logger.log(metadata);
+}
+
 use crate::svc;
 
 pub struct SvcOutputLogger;
@@ -76,7 +82,7 @@ use crate::service::fspsrv;
 use crate::service::fspsrv::IFileSystemProxy;
 
 pub struct FsAccessLogLogger {
-    service: Result<fspsrv::FileSystemProxy>
+    service: Result<mem::Shared<fspsrv::FileSystemProxy>>
 }
 
 impl Logger for FsAccessLogLogger {
@@ -99,7 +105,7 @@ impl Logger for FsAccessLogLogger {
         let msg = format!("[ FsAccessLog (severity: {}, verbosity: {}) from {} in thread {}, at {}:{} ] {}", severity_str, metadata.verbosity, metadata.fn_name, thread_name, metadata.file_name, metadata.line_no, metadata.msg);
         match self.service {
             Ok(ref mut fspsrv) => {
-                let _ = fspsrv.output_access_log_to_sd_card(msg.as_ptr(), msg.len());
+                let _ = fspsrv.get().output_access_log_to_sd_card(sf::Buffer::from_const(msg.as_ptr(), msg.len()));
             },
             _ => {}
         }
@@ -111,12 +117,12 @@ use crate::service::lm;
 use crate::service::lm::ILogService;
 use crate::service::lm::ILogger;
 
-#[derive(BitFlags, Copy, Clone, PartialEq, Eq, Debug)]
-#[repr(u8)]
-pub enum LogPacketFlags {
-    Head = 0b1,
-    Tail = 0b10,
-    LittleEndian = 0b100,
+bit_enum! {
+    LogPacketFlags (u8) {
+        Head = bit!(0),
+        Tail = bit!(1),
+        LittleEndian = bit!(2)
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -124,7 +130,7 @@ pub enum LogPacketFlags {
 pub struct LogPacketHeader {
     pub process_id: u64,
     pub thread_id: u64,
-    pub flags: BitFlags<LogPacketFlags>,
+    pub flags: LogPacketFlags,
     pub pad: u8,
     pub severity: LogSeverity,
     pub verbosity: bool,
@@ -163,7 +169,7 @@ impl LogDataChunkHeader {
         if self.length == 0 {
             return 0;
         }
-        mem::size_of::<LogDataChunkHeader>() + self.length as usize
+        cmem::size_of::<LogDataChunkHeader>() + self.length as usize
     }
 }
 
@@ -192,7 +198,7 @@ struct LogDataChunk<T> {
 
 impl<T: Default> LogDataChunk<T> {
     pub const fn from(key: LogDataChunkKey, value: T) -> Self {
-        Self { header: LogDataChunkHeader::new(key, mem::size_of::<T>() as u8), value: value }
+        Self { header: LogDataChunkHeader::new(key, cmem::size_of::<T>() as u8), value: value }
     }
 }
 
@@ -264,7 +270,7 @@ struct LogPacket {
 
 impl LogPacket {
     pub fn compute_chunk_size(&self) -> usize {
-        mem::size_of::<LogPacketHeader>() + self.payload.compute_chunk_size()
+        cmem::size_of::<LogPacketHeader>() + self.payload.compute_chunk_size()
     }
 }
 
@@ -295,19 +301,22 @@ fn encode_payload<T: Copy + LogDataChunkBase>(buf: *mut u8, t: &T) -> *mut u8 {
 }
 
 fn encode_payload_buf<T: Copy>(buf: *mut u8, t: &T) -> *mut u8 {
-    encode_payload_base(buf, t, mem::size_of::<T>())
+    encode_payload_base(buf, t, cmem::size_of::<T>())
 }
 
 pub struct LmLogger {
-    service: Result<lm::LogService>,
-    logger: Result<lm::Logger>
+    service: Result<mem::Shared<lm::LogService>>,
+    logger: Result<mem::Shared<lm::Logger>>
 }
 
 impl Logger for LmLogger {
     fn new() -> Self {
         let mut service = service::new_service_object::<lm::LogService>();
         let logger = match service {
-            Ok(ref mut srv) => srv.open_logger(),
+            Ok(ref mut service_obj) => match service_obj.get().open_logger(sf::ProcessId::new()) {
+                Ok(logger_obj) => Ok(logger_obj.to::<lm::Logger>()),
+                Err(rc) => Err(rc),
+            },
             Err(rc) => Err(rc),
         };
         Self { service: service, logger: logger }
@@ -321,15 +330,15 @@ impl Logger for LmLogger {
                     let mut packets: Vec<LogPacket> = Vec::new();
 
                     for _ in 0..packet_count {
-                        let mut packet: LogPacket = mem::zeroed();
-                        packet.header.flags |= LogPacketFlags::LittleEndian;
+                        let mut packet: LogPacket = cmem::zeroed();
+                        packet.header.flags |= LogPacketFlags::LittleEndian();
                         packet.header.severity = metadata.severity;
                         packet.header.verbosity = metadata.verbosity;
                         packets.push(packet);
                     }
 
                     if let Some(head_packet) = packets.get_mut(0) {
-                        head_packet.header.flags |= LogPacketFlags::Head;
+                        head_packet.header.flags |= LogPacketFlags::Head();
 
                         if let Ok(process_id) = svc::get_process_id(svc::CURRENT_PROCESS_PSEUDO_HANDLE) {
                             head_packet.header.process_id = process_id;
@@ -358,7 +367,7 @@ impl Logger for LmLogger {
                     }
 
                     if let Some(tail_packet) = packets.get_mut(packet_count - 1) {
-                        tail_packet.header.flags |= LogPacketFlags::Tail;
+                        tail_packet.header.flags |= LogPacketFlags::Tail();
                     }
 
                     let mut remaining_len = metadata.msg.len();
@@ -381,8 +390,10 @@ impl Logger for LmLogger {
                         packet.header.payload_size = packet.compute_chunk_size() as u32;
 
                         let log_buf_size = packet.compute_chunk_size();
-                        if let Ok(log_buf_layout) = alloc::alloc::Layout::from_size_align(mem::size_of::<LogPacket>(), 8) {
-                            let log_buf = alloc::alloc::alloc(log_buf_layout);
+                        // Allocate the size of the LogPacket struct, since the struct holds the header + every possible chunk in the packet body with its full size, thus no packet will exceed that size.
+                        // Check that the buffer size isn't bigger just in case, although I'm pretty sure that that will never happen.
+                        if cmem::size_of::<LogPacket>() > log_buf_size {
+                            let log_buf = alloc::alloc::alloc(alloc::alloc::Layout::new::<LogPacket>());
                             if !log_buf.is_null() {
                                 let mut encode_buf = encode_payload_buf(log_buf, &packet.header);
                                 encode_buf = encode_payload(encode_buf, &packet.payload.log_session_begin);
@@ -399,12 +410,12 @@ impl Logger for LmLogger {
 
                                 match &mut self.logger {
                                     Ok(ref mut logger) => {
-                                        let _ = logger.log(log_buf, log_buf_size);
+                                        let _ = logger.get().log(sf::Buffer::from_mut(log_buf, log_buf_size));
                                     },
                                     _ => {}
                                 }
 
-                                alloc::alloc::dealloc(log_buf, log_buf_layout);
+                                alloc::alloc::dealloc(log_buf, alloc::alloc::Layout::new::<LogPacket>());
                             }
                         }
                     }

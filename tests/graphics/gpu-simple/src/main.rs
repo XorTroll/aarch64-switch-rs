@@ -1,22 +1,17 @@
 #![no_std]
 #![no_main]
 
-#[macro_use]
-extern crate nx;
-
-#[macro_use]
 extern crate alloc;
 use alloc::vec::Vec;
 use alloc::string::String;
 
+extern crate nx;
 use nx::svc;
 use nx::result::*;
 use nx::results;
 use nx::util;
 use nx::diag::assert;
 use nx::diag::log;
-use nx::diag::log::Logger;
-use nx::service;
 use nx::service::vi;
 use nx::service::nv;
 use nx::gpu;
@@ -99,7 +94,10 @@ impl Square {
 
 pub fn gpu_main() -> Result<()> {
     let mut gpu_ctx: gpu::GpuContext<vi::SystemRootService, nv::AppletNvDrvService> = gpu::GpuContext::new(0x800000)?;
-    let mut input_ctx = input::InputContext::new(0, hid::NpadStyleTag::ProController | hid::NpadStyleTag::Handheld | hid::NpadStyleTag::JoyconPair | hid::NpadStyleTag::JoyconLeft | hid::NpadStyleTag::JoyconRight | hid::NpadStyleTag::SystemExt | hid::NpadStyleTag::System, vec![hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld])?;
+
+    let supported_tags = hid::NpadStyleTag::ProController() | hid::NpadStyleTag::Handheld() | hid::NpadStyleTag::JoyconPair() | hid::NpadStyleTag::JoyconLeft() | hid::NpadStyleTag::JoyconRight() | hid::NpadStyleTag::SystemExt() | hid::NpadStyleTag::System();
+    let controllers = [hid::ControllerId::Player1, hid::ControllerId::Player2, hid::ControllerId::Player3, hid::ControllerId::Player4, hid::ControllerId::Player5, hid::ControllerId::Player6, hid::ControllerId::Player7, hid::ControllerId::Player8, hid::ControllerId::Handheld];
+    let mut input_ctx = input::InputContext::new(0, supported_tags, &controllers)?;
 
     let width: u32 = 1280;
     let height: u32 = 720;
@@ -122,10 +120,10 @@ pub fn gpu_main() -> Result<()> {
             false => input_ctx.get_player(hid::ControllerId::Handheld)
         }?;
         let input_keys = input_player.get_button_state_down();
-        if input_keys.contains(input::Key::A) {
+        if input_keys.contains(input::Key::A()) {
             squares.push(Square::new(10, 10, 50, c_royal_blue));
         }
-        else if input_keys.contains(input::Key::Plus) {
+        else if input_keys.contains(input::Key::Plus()) {
             // Exit if Plus/+ is pressed.
             break;
         }

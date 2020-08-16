@@ -5,11 +5,13 @@ use crate::thread;
 use crate::service;
 use crate::service::sm;
 use crate::service::sm::IUserInterface;
+use crate::mem;
 use super::*;
 
 extern crate alloc;
 use alloc::vec::Vec;
 use alloc::boxed::Box;
+use core::mem as cmem;
 
 #[inline(always)]
 pub fn read_command_from_ipc_buffer(ctx: &mut CommandContext) -> CommandType {
@@ -77,7 +79,7 @@ pub fn write_command_response_on_ipc_buffer(ctx: &mut CommandContext, command_ty
 
             *special_header = CommandSpecialHeader::new(ctx.out_params.send_process_id, ctx.out_params.copy_handle_count as u32, ctx.out_params.move_handle_count as u32);
             if ctx.out_params.send_process_id {
-                ipc_buf = ipc_buf.offset(mem::size_of::<u64>() as isize);
+                ipc_buf = ipc_buf.offset(cmem::size_of::<u64>() as isize);
             }
 
             ipc_buf = write_array_to_buffer(ipc_buf, ctx.out_params.copy_handle_count as u32, &ctx.out_params.copy_handles);
@@ -101,18 +103,18 @@ pub fn read_request_command_from_ipc_buffer(ctx: &mut CommandContext) -> Result<
         let ipc_buf = get_ipc_buffer();
         let mut data_offset = get_aligned_data_offset(ctx.in_params.data_words_offset, ipc_buf);
 
-        // out pointer
+        // TODO: out pointer
 
         let data_header = data_offset as *mut DataHeader;
         data_offset = data_header.offset(1) as *mut u8;
 
-        // domain
+        // TODO: domain
 
         result_return_unless!((*data_header).magic == IN_DATA_HEADER_MAGIC, results::cmif::ResultInvalidInputHeader);
         let request_id = (*data_header).value;
 
         ctx.in_params.data_offset = data_offset;
-        ctx.in_params.data_size -= DATA_PADDING + mem::size_of::<DataHeader>() as u32;
+        ctx.in_params.data_size -= DATA_PADDING + cmem::size_of::<DataHeader>() as u32;
         Ok(request_id)
     }
 }
@@ -121,20 +123,20 @@ pub fn read_request_command_from_ipc_buffer(ctx: &mut CommandContext) -> Result<
 pub fn write_request_command_response_on_ipc_buffer(ctx: &mut CommandContext, result: ResultCode) {
     unsafe {
         let ipc_buf = get_ipc_buffer();
-        let mut data_size = DATA_PADDING + mem::size_of::<DataHeader>() as u32 + ctx.out_params.data_size;
-        // domain size
+        let mut data_size = DATA_PADDING + cmem::size_of::<DataHeader>() as u32 + ctx.out_params.data_size;
+        // TODO: domain size
         data_size = (data_size + 1) & !1;
-        // out pointer
+        // TODO: out pointer
 
         write_command_response_on_ipc_buffer(ctx, CommandType::Request, data_size);
         let mut data_offset = get_aligned_data_offset(ctx.out_params.data_words_offset, ipc_buf);
 
-        // out pointer
+        // TODO: out pointer
 
         let data_header = data_offset as *mut DataHeader;
         data_offset = data_header.offset(1) as *mut u8;
 
-        // domain
+        // TODO: domain
 
         *data_header = DataHeader::new(OUT_DATA_HEADER_MAGIC, 0, result.get_value(), 0);
         ctx.out_params.data_offset = data_offset;
@@ -151,10 +153,10 @@ pub fn read_control_command_from_ipc_buffer(ctx: &mut CommandContext) -> Result<
         data_offset = data_header.offset(1) as *mut u8;
 
         result_return_unless!((*data_header).magic == IN_DATA_HEADER_MAGIC, results::cmif::ResultInvalidInputHeader);
-        let control_request_id: ControlRequestId = mem::transmute((*data_header).value);
+        let control_request_id: ControlRequestId = cmem::transmute((*data_header).value);
 
         ctx.in_params.data_offset = data_offset;
-        ctx.in_params.data_size -= DATA_PADDING + mem::size_of::<DataHeader>() as u32;
+        ctx.in_params.data_size -= DATA_PADDING + cmem::size_of::<DataHeader>() as u32;
         Ok(control_request_id)
     }
 }
@@ -163,7 +165,7 @@ pub fn read_control_command_from_ipc_buffer(ctx: &mut CommandContext) -> Result<
 pub fn write_control_command_response_on_ipc_buffer(ctx: &mut CommandContext, result: ResultCode) {
     unsafe {
         let ipc_buf = get_ipc_buffer();
-        let mut data_size = DATA_PADDING + mem::size_of::<DataHeader>() as u32 + ctx.out_params.data_size;
+        let mut data_size = DATA_PADDING + cmem::size_of::<DataHeader>() as u32 + ctx.out_params.data_size;
         data_size = (data_size + 1) & !1;
 
         write_command_response_on_ipc_buffer(ctx, CommandType::Control, data_size);
@@ -182,7 +184,101 @@ pub fn write_close_command_response_on_ipc_buffer(ctx: &mut CommandContext) {
     write_command_response_on_ipc_buffer(ctx, CommandType::Close, 0);
 }
 
-pub type CommandFn = fn(&mut dyn Server, &mut CommandContext) -> Result<()>;
+pub trait CommandParameter<O> {
+    fn after_request_read(walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<O>;
+    fn before_response_write(var: &Self, walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()>;
+    fn after_response_write(var: &Self, walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()>;
+}
+
+impl<T: Copy> CommandParameter<T> for T {
+    default fn after_request_read(walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<Self> {
+        Ok(walker.advance_get())
+    }
+
+    default fn before_response_write(_raw: &Self, walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        walker.advance::<Self>();
+        Ok(())
+    }
+
+    default fn after_response_write(raw: &Self, walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        walker.advance_set(*raw);
+        Ok(())
+    }
+}
+
+// TODO: support these
+
+impl<const A: BufferAttribute> CommandParameter<sf::Buffer<A>> for sf::Buffer<A> {
+    fn after_request_read(_walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<Self> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn before_response_write(_buffer: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn after_response_write(_buffer: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+}
+
+impl<const M: HandleMode> CommandParameter<sf::Handle<M>> for sf::Handle<M> {
+    fn after_request_read(_walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<Self> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn before_response_write(_handle: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn after_response_write(_handle: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+}
+
+impl CommandParameter<sf::ProcessId> for sf::ProcessId {
+    fn after_request_read(_walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<Self> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn before_response_write(_process_id: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn after_response_write(_process_id: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+}
+
+impl CommandParameter<mem::Shared<dyn service::ISessionObject>> for mem::Shared<dyn service::ISessionObject> {
+    fn after_request_read(_walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<Self> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn before_response_write(_session: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn after_response_write(_session: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+}
+
+impl<S: service::ISessionObject + 'static> CommandParameter<mem::Shared<dyn service::ISessionObject>> for mem::Shared<S> {
+    fn after_request_read(_walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<mem::Shared<dyn service::ISessionObject>> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn before_response_write(_session: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+
+    fn after_response_write(_session: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
+        Err(results::hipc::ResultUnsupportedOperation::make())
+    }
+}
+
+pub type CommandFn = fn(&mut dyn IServer, &mut CommandContext) -> Result<()>;
 pub type CommandOrigFn<T> = fn(&mut T, &mut CommandContext) -> Result<()>;
 
 pub struct CommandMetadata {
@@ -190,29 +286,34 @@ pub struct CommandMetadata {
     pub func: CommandFn
 }
 
+pub type CommandMetadataTable = Vec<CommandMetadata>;
+
 impl CommandMetadata {
     pub fn new(id: u32, func: CommandFn) -> Self {
         Self { id: id, func: func }
     }
 }
 
-pub trait Server {
-    fn new() -> Self where Self: Sized;
-    fn get_command_table(&self) -> Vec<CommandMetadata>;
+pub trait IServer {
+    fn get_command_table(&self) -> CommandMetadataTable;
 
     fn call_self_command(&mut self, command: CommandFn, ctx: &mut CommandContext) -> Result<()> {
         let original_fn: CommandOrigFn<Self> = unsafe {
-            core::mem::transmute(command)
+            cmem::transmute(command)
         };
         (original_fn)(self, ctx)
     }
 }
 
-fn new_server_impl<S: Server + 'static>() -> Box<dyn Server> {
+pub trait INewableServer: IServer {
+    fn new() -> Self where Self: Sized;
+}
+
+fn new_server_impl<S: INewableServer + 'static>() -> Box<dyn IServer> {
     Box::new(S::new())
 }
 
-pub type NewServerFn = fn() -> Box<dyn Server>;
+pub type NewServerFn = fn() -> Box<dyn IServer>;
 
 pub enum WaitHandleType {
     Server,
@@ -231,7 +332,7 @@ impl WaitHandle {
 }
 
 pub struct ServerObject {
-    pub server: Option<Box<dyn Server>>,
+    pub server: Option<Box<dyn IServer>>,
     pub new_server_fn: Option<NewServerFn>,
     pub handle: WaitHandle,
     pub forward_handle: svc::Handle,
@@ -244,11 +345,11 @@ impl ServerObject {
         Self { server: None, new_server_fn: None, handle: WaitHandle::new(0, WaitHandleType::Server), forward_handle: 0, is_mitm_service: false, service_name: sm::ServiceName::empty() } 
     }
 
-    pub fn new_session<S: Server + 'static>(handle: svc::Handle) -> Self {
+    pub fn new_session<S: INewableServer + 'static>(handle: svc::Handle) -> Self {
         Self { server: Some(Box::new(S::new())), new_server_fn: Some(new_server_impl::<S>), handle: WaitHandle::new(handle, WaitHandleType::Session), forward_handle: 0, is_mitm_service: false, service_name: sm::ServiceName::empty() } 
     }
     
-    pub fn new_server<S: Server + 'static>(handle: svc::Handle, service_name: sm::ServiceName, is_mitm_service: bool) -> Self {
+    pub fn new_server<S: INewableServer + 'static>(handle: svc::Handle, service_name: sm::ServiceName, is_mitm_service: bool) -> Self {
         Self { server: Some(Box::new(S::new())), new_server_fn: Some(new_server_impl::<S>), handle: WaitHandle::new(handle, WaitHandleType::Server), forward_handle: 0, is_mitm_service: is_mitm_service, service_name: service_name } 
     }
 
@@ -257,7 +358,7 @@ impl ServerObject {
         Ok(Self { server: Some((new_fn)()), new_server_fn: Some(new_fn), handle: WaitHandle::new(handle, WaitHandleType::Session), forward_handle: forward_handle, is_mitm_service: false, service_name: sm::ServiceName::empty() })
     }
 
-    pub fn get_server(&mut self) -> Result<&mut Box<dyn Server>> {
+    pub fn get_server(&mut self) -> Result<&mut Box<dyn IServer>> {
         match &mut self.server {
             Some(server) => Ok(server),
             None => Err(results::hipc::ResultSessionClosed::make())
@@ -394,9 +495,9 @@ impl ServerContainer {
                         let mut forward_handle: svc::Handle = 0;
 
                         if server.is_mitm_service {
-                            let mut sm = service::new_named_port_object::<sm::UserInterface>()?;
-                            let (_info, session_handle) = sm.atmosphere_acknowledge_mitm_session(server.service_name)?;
-                            forward_handle = session_handle;
+                            let sm = service::new_named_port_object::<sm::UserInterface>()?;
+                            let (_info, session_handle) = sm.get().atmosphere_acknowledge_mitm_session(server.service_name)?;
+                            forward_handle = session_handle.handle;
                         }
 
                         push_new_session = true;
@@ -417,23 +518,23 @@ impl ServerContainer {
     }
 }
 
-pub trait Service: Server {
+pub trait IService: INewableServer {
     fn get_name() -> &'static str;
     fn get_max_sesssions() -> i32;
 }
 
-pub trait MitmService: Server {
+pub trait MitmService: INewableServer {
     fn get_name() -> &'static str;
     fn should_mitm(info: sm::MitmProcessInfo) -> bool;
 }
 
-pub trait NamedPort: Server {
+pub trait INamedPort: INewableServer {
     fn get_port_name() -> &'static str;
     fn get_max_sesssions() -> i32;
 }
 
 pub trait IMitmQueryServer {
-    ipc_server_interface_define_command!(should_mitm: (info: sm::MitmProcessInfo) => (should_mitm: bool));
+    ipc_interface_define_command!(should_mitm: (info: sm::MitmProcessInfo) => (should_mitm: bool));
 }
 
 pub struct MitmQueryServer<S: MitmService> {
@@ -446,13 +547,15 @@ impl<S: MitmService> IMitmQueryServer for MitmQueryServer<S> {
     }
 }
 
-impl<S: MitmService> Server for MitmQueryServer<S> {
+impl<S: MitmService> INewableServer for MitmQueryServer<S> {
     fn new() -> Self {
         Self { phantom: core::marker::PhantomData }
     }
+}
 
-    fn get_command_table(&self) -> Vec<CommandMetadata> {
-        ipc_server_make_command_metadata!(
+impl<S: MitmService> IServer for MitmQueryServer<S> {
+    fn get_command_table(&self) -> CommandMetadataTable {
+        ipc_server_make_command_table!(
             should_mitm: 65000
         )
     }
@@ -499,13 +602,13 @@ impl ServerManager {
         self.server_containers.push(container);
     }
     
-    pub fn register_server<S: Server + 'static>(&mut self, handle: svc::Handle, service_name: sm::ServiceName, is_mitm_service: bool) {
+    pub fn register_server<S: INewableServer + 'static>(&mut self, handle: svc::Handle, service_name: sm::ServiceName, is_mitm_service: bool) {
         let server = ServerObject::new_server::<S>(handle, service_name, is_mitm_service);
         let container = ServerContainer::new(server);
         self.server_containers.push(container);
     }
     
-    pub fn register_session<S: Server + 'static>(&mut self, handle: svc::Handle) {
+    pub fn register_session<S: INewableServer + 'static>(&mut self, handle: svc::Handle) {
         let server = ServerObject::new_session::<S>(handle);
         let container = ServerContainer::new(server);
         self.server_containers.push(container);
@@ -517,15 +620,15 @@ impl ServerManager {
         self.mitm_query_sessions.push(container);
     }
     
-    pub fn register_service_server<S: Service + 'static>(&mut self) -> Result<()> {
+    pub fn register_service_server<S: IService + 'static>(&mut self) -> Result<()> {
         let service_name = sm::ServiceName::new(S::get_name());
         
         let service_handle = {
-            let mut sm = service::new_named_port_object::<sm::UserInterface>()?;
-            sm.register_service(service_name, false, S::get_max_sesssions())?
+            let sm = service::new_named_port_object::<sm::UserInterface>()?;
+            sm.get().register_service(service_name, false, S::get_max_sesssions())?
         };
 
-        self.register_server::<S>(service_handle, service_name, false);
+        self.register_server::<S>(service_handle.handle, service_name, false);
         Ok(())
     }
     
@@ -533,16 +636,16 @@ impl ServerManager {
         let service_name = sm::ServiceName::new(S::get_name());
 
         let (mitm_handle, query_handle) = {
-            let mut sm = service::new_named_port_object::<sm::UserInterface>()?;
-            sm.atmosphere_install_mitm(service_name)?
+            let sm = service::new_named_port_object::<sm::UserInterface>()?;
+            sm.get().atmosphere_install_mitm(service_name)?
         };
 
-        self.register_server::<S>(mitm_handle, service_name, true);
-        self.register_mitm_query_session::<S>(query_handle);
+        self.register_server::<S>(mitm_handle.handle, service_name, true);
+        self.register_mitm_query_session::<S>(query_handle.handle);
         Ok(())
     }
 
-    pub fn register_named_port_server<S: NamedPort + 'static>(&mut self) -> Result<()> {
+    pub fn register_named_port_server<S: INamedPort + 'static>(&mut self) -> Result<()> {
         let port_handle = svc::manage_named_port(S::get_port_name().as_ptr(), S::get_max_sesssions())?;
 
         self.register_server::<S>(port_handle, sm::ServiceName::empty(), false);

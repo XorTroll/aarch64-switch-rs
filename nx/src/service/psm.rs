@@ -1,14 +1,39 @@
 use crate::result::*;
+// use crate::ipc::sf;
+use crate::ipc::server;
 use crate::service;
-use crate::service::SessionObject;
 
-pub trait IPsmServer {
-    fn get_battery_charge_percentage(&mut self) -> Result<u32>;
+pub use crate::ipc::sf::psm::*;
+
+pub struct PsmServer {
+    session: service::Session
 }
 
-session_object_define!(PsmServer);
+impl service::ISessionObject for PsmServer {
+    fn new(session: service::Session) -> Self {
+        Self { session: session }
+    }
+    
+    fn get_session(&mut self) -> &mut service::Session {
+        &mut self.session
+    }
+}
 
-impl service::Service for PsmServer {
+impl IPsmServer for PsmServer {
+    fn get_battery_charge_percentage(&mut self) -> Result<u32> {
+        ipc_client_send_request_command!([self.session.session; 0] () => (charge: u32))
+    }
+}
+
+impl server::IServer for PsmServer {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_battery_charge_percentage: 0
+        }
+    }
+}
+
+impl service::IService for PsmServer {
     fn get_name() -> &'static str {
         nul!("psm")
     }
@@ -19,25 +44,5 @@ impl service::Service for PsmServer {
 
     fn post_initialize(&mut self) -> Result<()> {
         Ok(())
-    }
-}
-
-impl IPsmServer for PsmServer {
-    fn get_battery_charge_percentage(&mut self) -> Result<u32> {
-        let charge: u32;
-        ipc_client_session_send_request_command!([self.session; 0; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                charge: u32 => charge
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(charge)
     }
 }

@@ -17,18 +17,17 @@ use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
 use nx::service::sm;
-use nx::ipc::CommandParameterDeserialize;
 use nx::ipc::server;
 
 use core::panic;
 
-pub trait IAccU0MitmService {
-    ipc_server_interface_define_command!(get_user_count: () => (out_value: u32));
+pub trait IAccountServiceForApplication {
+    ipc_interface_define_command!(get_user_count: () => (out_value: u32));
 }
 
-pub struct AccU0MitmService;
+pub struct AccountServiceForApplication;
 
-impl IAccU0MitmService for AccU0MitmService {
+impl IAccountServiceForApplication for AccountServiceForApplication {
     fn get_user_count(&mut self) -> Result<u32> {
         let stub: u32 = 69;
         diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "acc:u0 mitm accessed! returning {} as stubbed value...", stub);
@@ -36,19 +35,21 @@ impl IAccU0MitmService for AccU0MitmService {
     }
 }
 
-impl server::Server for AccU0MitmService {
+impl server::INewableServer for AccountServiceForApplication {
     fn new() -> Self {
         Self {}
     }
+}
 
-    fn get_command_table(&self) -> Vec<server::CommandMetadata> {
-        ipc_server_make_command_metadata!(
+impl server::IServer for AccountServiceForApplication {
+    fn get_command_table(&self) -> server::CommandMetadataTable {
+        ipc_server_make_command_table!(
             get_user_count: 0
         )
     }
 }
 
-impl server::MitmService for AccU0MitmService {
+impl server::MitmService for AccountServiceForApplication {
     fn get_name() -> &'static str {
         nul!("acc:u0")
     }
@@ -70,7 +71,7 @@ pub fn initialize_heap(_hbl_heap: util::PointerAndSize) -> util::PointerAndSize 
 
 pub fn server_main() -> Result<()> {
     let mut manager = server::ServerManager::new();
-    manager.register_mitm_service_server::<AccU0MitmService>()?;
+    manager.register_mitm_service_server::<AccountServiceForApplication>()?;
     manager.loop_process();
 
     Ok(())
