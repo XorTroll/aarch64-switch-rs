@@ -216,6 +216,11 @@ impl<NS: nv::INvDrvService> Surface<NS> {
         Ok(())
     }
 
+    pub fn set_visible(&mut self, visible: bool) -> Result<()> {
+        let system_display_service = self.application_display_service.get().get_system_display_service()?.to::<vi::SystemDisplayService>();
+        system_display_service.get().set_layer_visibility(visible, self.layer_id)
+    }
+
     pub fn wait_buffer_event(&mut self, timeout: i64) -> Result<()> {
         svc::wait_synchronization(&self.buffer_event_handle, 1, timeout)?;
         svc::reset_signal(self.buffer_event_handle)

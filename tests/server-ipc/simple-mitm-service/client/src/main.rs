@@ -24,22 +24,22 @@ pub trait IAccountServiceForApplication {
 }
 
 pub struct AccountServiceForApplication {
-    session: service::Session
+    session: sf::Session
 }
 
 impl service::ISessionObject for AccountServiceForApplication {
-    fn new(session: service::Session) -> Self {
+    fn new(session: sf::Session) -> Self {
         Self { session: session }
     }
     
-    fn get_session(&mut self) -> &mut service::Session {
+    fn get_session(&mut self) -> &mut sf::Session {
         &mut self.session
     }
 }
 
 impl IAccountServiceForApplication for AccountServiceForApplication {
     fn get_user_count(&mut self) -> Result<u32> {
-        ipc_client_send_request_command!([self.session.session; 0] () => (count: u32))
+        ipc_client_send_request_command!([self.session.object_info; 0] () => (count: u32))
     }
 }
 

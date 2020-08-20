@@ -1,6 +1,5 @@
 use crate::result::*;
 use crate::ipc::sf;
-use crate::service;
 use crate::mem;
 
 bit_enum! {
@@ -18,5 +17,5 @@ pub trait ILogger {
 }
 
 pub trait ILogService {
-    ipc_interface_define_command!(open_logger: (process_id: sf::ProcessId) => (logger: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(open_logger: (process_id: sf::ProcessId) => (logger: mem::Shared<dyn sf::IObject>));
 }

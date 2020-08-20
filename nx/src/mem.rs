@@ -100,6 +100,12 @@ impl<T: ?Sized> Shared<T> {
     pub fn get(&self) -> &mut T {
         unsafe { &mut *self.object }
     }
+
+    pub fn copy(&self) -> Self {
+        let mut new_shared = Self { object: self.object, refcount: self.refcount };
+        new_shared.acquire(new_shared.object);
+        new_shared
+    }
 }
 
 impl<T: marker::Unsize<U> + ?Sized, U: ?Sized> ops::CoerceUnsized<Shared<U>> for Shared<T> {}

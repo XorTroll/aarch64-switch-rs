@@ -272,6 +272,14 @@ impl InputContext {
         let controller_data: *const ControllerData = unsafe { &(*self.shared_mem_data).controllers[index] };
         Ok(Player::new(controller, controller_data))
     }
+
+    pub fn get_touch_data(&mut self, touch_index: u32) -> Result<TouchData> {
+        unsafe {
+            let touch_entry: *const TouchEntry = &(*self.shared_mem_data).touch_state.entries[(*self.shared_mem_data).touch_state.latest_index as usize];
+            result_return_unless!((touch_index as u64) < (*touch_entry).count, 0xBAEEF);
+            Ok((*touch_entry).touches[touch_index as usize])
+        }
+    }
 }
 
 impl Drop for InputContext {

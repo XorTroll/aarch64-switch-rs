@@ -17,6 +17,7 @@ use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
 use nx::service::sm;
+use nx::ipc::sf;
 use nx::ipc::server;
 
 use core::panic;
@@ -33,19 +34,17 @@ impl IAccountServiceForApplication for AccountServiceForApplication {
         diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "acc:u0 mitm accessed! returning {} as stubbed value...", stub);
         Ok(stub)
     }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table!(
+            get_user_count: 0
+        )
+    }
 }
 
 impl server::INewableServer for AccountServiceForApplication {
     fn new() -> Self {
         Self {}
-    }
-}
-
-impl server::IServer for AccountServiceForApplication {
-    fn get_command_table(&self) -> server::CommandMetadataTable {
-        ipc_server_make_command_table!(
-            get_user_count: 0
-        )
     }
 }
 

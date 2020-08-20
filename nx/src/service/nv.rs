@@ -1,7 +1,6 @@
 use crate::result::*;
 use crate::results;
 use crate::ipc::sf;
-use crate::ipc::server;
 use crate::service;
 
 pub use crate::ipc::sf::nv::*;
@@ -33,28 +32,36 @@ pub fn convert_error_code(err: ErrorCode) -> Result<()> {
 }
 
 // NvDrvService is the base trait for all the different services, since the only difference is their service names :P
-pub trait NvDrvService {}
+pub trait NvDrvService: service::IClientObject {}
 
-impl<S: NvDrvService + service::ISessionObject> INvDrvService for S {
+impl<S: NvDrvService> INvDrvService for S {
     fn open(&mut self, path: sf::InMapAliasBuffer) -> Result<(Fd, ErrorCode)> {
-        ipc_client_send_request_command!([self.get_inner_session(); 0] (path) => (fd: Fd, error_code: ErrorCode))
+        ipc_client_send_request_command!([self.get_info(); 0] (path) => (fd: Fd, error_code: ErrorCode))
     }
 
     fn ioctl(&mut self, fd: Fd, id: IoctlId, in_buf: sf::InAutoSelectBuffer, out_buf: sf::OutAutoSelectBuffer) -> Result<ErrorCode> {
-        ipc_client_send_request_command!([self.get_inner_session(); 1] (fd, id, in_buf, out_buf) => (error_code: ErrorCode))
+        ipc_client_send_request_command!([self.get_info(); 1] (fd, id, in_buf, out_buf) => (error_code: ErrorCode))
     }
 
     fn close(&mut self, fd: Fd) -> Result<ErrorCode> {
-        ipc_client_send_request_command!([self.get_inner_session(); 2] (fd) => (error_code: ErrorCode))
+        ipc_client_send_request_command!([self.get_info(); 2] (fd) => (error_code: ErrorCode))
     }
 
     fn initialize(&mut self, transfer_mem_size: u32, self_process_handle: sf::CopyHandle, transfer_mem_handle: sf::CopyHandle) -> Result<ErrorCode> {
-        ipc_client_send_request_command!([self.get_inner_session(); 3] (transfer_mem_size, self_process_handle, transfer_mem_handle) => (error_code: ErrorCode))
+        ipc_client_send_request_command!([self.get_info(); 3] (transfer_mem_size, self_process_handle, transfer_mem_handle) => (error_code: ErrorCode))
     }
 }
 
-impl<S: NvDrvService + service::ISessionObject> server::IServer for S {
-    fn get_command_table(&self) -> server::CommandMetadataTable {
+pub struct AppletNvDrvService {
+    session: sf::Session
+}
+
+impl sf::IObject for AppletNvDrvService {
+    fn get_session(&mut self) -> &mut sf::Session {
+        &mut self.session
+    }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
         ipc_server_make_command_table! {
             open: 0,
             ioctl: 1,
@@ -64,17 +71,9 @@ impl<S: NvDrvService + service::ISessionObject> server::IServer for S {
     }
 }
 
-pub struct AppletNvDrvService {
-    session: service::Session
-}
-
-impl service::ISessionObject for AppletNvDrvService {
-    fn new(session: service::Session) -> Self {
+impl service::IClientObject for AppletNvDrvService {
+    fn new(session: sf::Session) -> Self {
         Self { session: session }
-    }
-    
-    fn get_session(&mut self) -> &mut service::Session {
-        &mut self.session
     }
 }
 
@@ -83,6 +82,47 @@ impl NvDrvService for AppletNvDrvService {}
 impl service::IService for AppletNvDrvService {
     fn get_name() -> &'static str {
         nul!("nvdrv:a")
+    }
+
+    fn as_domain() -> bool {
+        false
+    }
+
+    fn post_initialize(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+pub struct SystemNvDrvService {
+    session: sf::Session
+}
+
+impl sf::IObject for SystemNvDrvService {
+    fn get_session(&mut self) -> &mut sf::Session {
+        &mut self.session
+    }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            open: 0,
+            ioctl: 1,
+            close: 2,
+            initialize: 3
+        }
+    }
+}
+
+impl service::IClientObject for SystemNvDrvService {
+    fn new(session: sf::Session) -> Self {
+        Self { session: session }
+    }
+}
+
+impl NvDrvService for SystemNvDrvService {}
+
+impl service::IService for SystemNvDrvService {
+    fn get_name() -> &'static str {
+        nul!("nvdrv:s")
     }
 
     fn as_domain() -> bool {

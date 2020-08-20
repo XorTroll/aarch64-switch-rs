@@ -81,7 +81,7 @@ pub fn write_request_command_on_ipc_buffer(ctx: &mut CommandContext, request_id:
             data_size += cmem::size_of::<DataHeader>() as u32;
         }
 
-        if ctx.session.is_domain() {
+        if ctx.object_info.is_domain() {
             data_size += (cmem::size_of::<DomainInDataHeader>() + cmem::size_of::<u32>() * ctx.in_params.object_count) as u32;
         }
 
@@ -96,10 +96,10 @@ pub fn write_request_command_on_ipc_buffer(ctx: &mut CommandContext, request_id:
         write_array_to_buffer(out_pointer_sizes, ctx.in_params.out_pointer_size_count as u32, &ctx.in_params.out_pointer_sizes);
 
         let mut data_header = data_offset as *mut DataHeader;
-        if ctx.session.is_domain() {
+        if ctx.object_info.is_domain() {
             let domain_header = data_offset as *mut DomainInDataHeader;
             let left_data_size = cmem::size_of::<DataHeader>() as u32 + ctx.in_params.data_size;
-            *domain_header = DomainInDataHeader::new(domain_command_type, ctx.in_params.object_count as u8, left_data_size as u16, ctx.session.object_id, 0);
+            *domain_header = DomainInDataHeader::new(domain_command_type, ctx.in_params.object_count as u8, left_data_size as u16, ctx.object_info.domain_object_id, 0);
             data_offset = data_offset.offset(cmem::size_of::<DomainInDataHeader>() as isize);
             let objects_offset = data_offset.offset(left_data_size as isize);
             write_array_to_buffer(objects_offset, ctx.in_params.object_count as u32, &ctx.in_params.objects);
@@ -123,7 +123,7 @@ pub fn read_request_command_response_from_ipc_buffer(ctx: &mut CommandContext) -
 
         let mut data_offset = get_aligned_data_offset(ctx.out_params.data_words_offset, ipc_buf);
         let mut data_header = data_offset as *mut DataHeader;
-        if ctx.session.is_domain() {
+        if ctx.object_info.is_domain() {
             let domain_header = data_offset as *mut DomainOutDataHeader;
             data_offset = data_offset.offset(cmem::size_of::<DomainOutDataHeader>() as isize);
             let objects_offset = data_offset.offset((cmem::size_of::<DataHeader>() + ctx.out_params.data_size as usize) as isize);
@@ -253,9 +253,9 @@ impl CommandParameter<sf::ProcessId> for sf::ProcessId {
     }
 }
 
-impl CommandParameter<mem::Shared<dyn service::ISessionObject>> for mem::Shared<dyn service::ISessionObject> {
+impl CommandParameter<mem::Shared<dyn sf::IObject>> for mem::Shared<dyn sf::IObject> {
     fn before_request_write(session: &Self, _walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()> {
-        ctx.in_params.add_session(session.get().get_inner_session());
+        ctx.in_params.add_object(session.get().get_info());
         Ok(())
     }
 
@@ -264,14 +264,14 @@ impl CommandParameter<mem::Shared<dyn service::ISessionObject>> for mem::Shared<
     }
 
     fn after_response_read(_walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<Self> {
-        // Only supported when the ISessionObject type is known (see the generic impl below)
+        // Only supported when the IObject type is known (see the generic implementation below)
         Err(results::hipc::ResultUnsupportedOperation::make())
     }
 }
 
-impl<S: service::ISessionObject + 'static> CommandParameter<mem::Shared<dyn service::ISessionObject>> for mem::Shared<S> {
+impl<S: service::IClientObject + 'static> CommandParameter<mem::Shared<dyn sf::IObject>> for mem::Shared<S> {
     fn before_request_write(session: &Self, _walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()> {
-        ctx.in_params.add_session(session.get().get_inner_session());
+        ctx.in_params.add_object(session.get().get_info());
         Ok(())
     }
 
@@ -279,8 +279,8 @@ impl<S: service::ISessionObject + 'static> CommandParameter<mem::Shared<dyn serv
         Ok(())
     }
 
-    fn after_response_read(_walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<mem::Shared<dyn service::ISessionObject>> {
-        let session = ctx.pop_session()?;
-        Ok(mem::Shared::new(S::new(service::Session::from(session))))
+    fn after_response_read(_walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<mem::Shared<dyn sf::IObject>> {
+        let object_info = ctx.pop_object()?;
+        Ok(mem::Shared::new(S::new(sf::Session::from(object_info))))
     }
 }

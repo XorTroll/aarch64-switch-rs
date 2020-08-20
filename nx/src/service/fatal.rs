@@ -1,35 +1,34 @@
 use crate::result::*;
 use crate::ipc::sf;
-use crate::ipc::server;
 use crate::service;
 
 pub use crate::ipc::sf::fatal::*;
 
 pub struct Service {
-    session: service::Session
+    session: sf::Session
 }
 
-impl service::ISessionObject for Service {
-    fn new(session: service::Session) -> Self {
-        Self { session: session }
-    }
-    
-    fn get_session(&mut self) -> &mut service::Session {
+impl sf::IObject for Service {
+    fn get_session(&mut self) -> &mut sf::Session {
         &mut self.session
+    }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            throw_with_policy: 1
+        }
+    }
+}
+
+impl service::IClientObject for Service {
+    fn new(session: sf::Session) -> Self {
+        Self { session: session }
     }
 }
 
 impl IService for Service {
     fn throw_with_policy(&mut self, rc: ResultCode, policy: Policy, process_id: sf::ProcessId) -> Result<()> {
-        ipc_client_send_request_command!([self.session.session; 1] (rc, policy, process_id) => ())
-    }
-}
-
-impl server::IServer for Service {
-    fn get_command_table(&self) -> server::CommandMetadataTable {
-        ipc_server_make_command_table! {
-            throw_with_policy: 1
-        }
+        ipc_client_send_request_command!([self.session.object_info; 1] (rc, policy, process_id) => ())
     }
 }
 

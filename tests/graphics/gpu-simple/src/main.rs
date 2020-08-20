@@ -109,10 +109,10 @@ pub fn gpu_main() -> Result<()> {
     let c_black = ui2d::RGBA8::new_rgb(0, 0, 0);
     let c_royal_blue = ui2d::RGBA8::new_rgb(65, 105, 225);
 
-    let font_data = include_bytes!("../font/Roboto-Medium.ttf");
+    let font_data = include_bytes!("../../font/Roboto-Medium.ttf");
     let font = rusttype::Font::try_from_bytes(font_data as &[u8]).unwrap();
 
-    let mut surface = ui2d::SurfaceEx::from(gpu_ctx.create_stray_layer_surface("Default", width, height, 2, color_fmt, gpu::PixelFormat::RGBA_8888, gpu::Layout::BlockLinear)?);
+    let mut surface = ui2d::SurfaceEx::from(gpu_ctx.create_stray_layer_surface("Default", 2, color_fmt, gpu::PixelFormat::RGBA_8888, gpu::Layout::BlockLinear)?);
 
     loop {
         let mut input_player = match input_ctx.is_controller_connected(hid::ControllerId::Player1) {

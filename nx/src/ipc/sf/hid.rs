@@ -1,6 +1,5 @@
 use crate::result::*;
 use crate::ipc::sf;
-use crate::service;
 use crate::mem;
 
 bit_enum! {
@@ -41,7 +40,7 @@ pub trait IAppletResource {
 }
 
 pub trait IHidServer {
-    ipc_interface_define_command!(create_applet_resource: (aruid: sf::ProcessId) => (applet_resource: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(create_applet_resource: (aruid: sf::ProcessId) => (applet_resource: mem::Shared<dyn sf::IObject>));
     ipc_interface_define_command!(set_supported_npad_style_set: (aruid: sf::ProcessId, npad_style_tag: NpadStyleTag) => ());
     ipc_interface_define_command!(set_supported_npad_id_type: (aruid: sf::ProcessId, controllers: sf::InPointerBuffer) => ());
     ipc_interface_define_command!(activate_npad: (aruid: sf::ProcessId) => ());

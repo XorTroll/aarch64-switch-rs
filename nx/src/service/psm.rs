@@ -1,35 +1,34 @@
 use crate::result::*;
-// use crate::ipc::sf;
-use crate::ipc::server;
+use crate::ipc::sf;
 use crate::service;
 
 pub use crate::ipc::sf::psm::*;
 
 pub struct PsmServer {
-    session: service::Session
+    session: sf::Session
 }
 
-impl service::ISessionObject for PsmServer {
-    fn new(session: service::Session) -> Self {
-        Self { session: session }
-    }
-    
-    fn get_session(&mut self) -> &mut service::Session {
+impl sf::IObject for PsmServer {
+    fn get_session(&mut self) -> &mut sf::Session {
         &mut self.session
+    }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table! {
+            get_battery_charge_percentage: 0
+        }
+    }
+}
+
+impl service::IClientObject for PsmServer {
+    fn new(session: sf::Session) -> Self {
+        Self { session: session }
     }
 }
 
 impl IPsmServer for PsmServer {
     fn get_battery_charge_percentage(&mut self) -> Result<u32> {
-        ipc_client_send_request_command!([self.session.session; 0] () => (charge: u32))
-    }
-}
-
-impl server::IServer for PsmServer {
-    fn get_command_table(&self) -> server::CommandMetadataTable {
-        ipc_server_make_command_table! {
-            get_battery_charge_percentage: 0
-        }
+        ipc_client_send_request_command!([self.session.object_info; 0] () => (charge: u32))
     }
 }
 

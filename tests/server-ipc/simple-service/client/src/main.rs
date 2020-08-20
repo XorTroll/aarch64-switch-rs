@@ -11,35 +11,84 @@ use nx::svc;
 use nx::result::*;
 use nx::results;
 use nx::util;
+use nx::mem;
 use nx::diag::assert;
 use nx::diag::log;
-use nx::diag::log::Logger;
+use nx::ipc::sf;
 use nx::service;
 
 use core::panic;
 
-// Same interface as /server project
+pub trait IDemoSubInterface {
+    ipc_interface_define_command!(sample_cmd_1: (input: u32) => (output: u32));
+}
+
 pub trait IDemoService {
-    ipc_interface_define_command!(sample_cmd_1: (in_value: u32) => (out_value: u64));
+    ipc_interface_define_command!(open_sub_interface: (value: u32, pid: sf::ProcessId) => (sub_interface: mem::Shared<dyn sf::IObject>));
+}
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct SampleStruct {
+    val1: u32,
+    val2: u64,
+    val3: bool,
+    val4: char
+}
+
+pub struct DemoSubInterface {
+    session: sf::Session
+}
+
+impl sf::IObject for DemoSubInterface {
+    fn get_session(&mut self) -> &mut sf::Session {
+        &mut self.session
+    }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table!(
+            sample_cmd_1: 246
+        )
+    }
+}
+
+impl service::IClientObject for DemoSubInterface {
+    fn new(session: sf::Session) -> Self {
+        Self { session: session }
+    }
+}
+
+impl IDemoSubInterface for DemoSubInterface {
+    fn sample_cmd_1(&mut self, input: u32) -> Result<u32> {
+        ipc_client_send_request_command!([self.session.object_info; 246] (input) => (output: u32))
+    }
 }
 
 pub struct DemoService {
-    session: service::Session
+    session: sf::Session
 }
 
-impl service::ISessionObject for DemoService {
-    fn new(session: service::Session) -> Self {
-        Self { session: session }
-    }
-    
-    fn get_session(&mut self) -> &mut service::Session {
+impl sf::IObject for DemoService {
+    fn get_session(&mut self) -> &mut sf::Session {
         &mut self.session
+    }
+
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table!(
+            open_sub_interface: 123
+        )
+    }
+}
+
+impl service::IClientObject for DemoService {
+    fn new(session: sf::Session) -> Self {
+        Self { session: session }
     }
 }
 
 impl IDemoService for DemoService {
-    fn sample_cmd_1(&mut self, in_value: u32) -> Result<u64> {
-        ipc_client_send_request_command!([self.session.session; 123] (in_value) => (out_value: u64))
+    fn open_sub_interface(&mut self, value: u32, pid: sf::ProcessId) -> Result<mem::Shared<dyn sf::IObject>> {
+        ipc_client_send_request_command!([self.session.object_info; 123] (value, pid) => (sub_interface: mem::Shared<DemoSubInterface>))
     }
 }
 
@@ -72,15 +121,13 @@ pub fn initialize_heap(hbl_heap: util::PointerAndSize) -> util::PointerAndSize {
 pub fn client_main() -> Result<()> {
     let demosrv = service::new_service_object::<DemoService>()?;
 
-    let test_command_with_value = |val: u32| {
-        match demosrv.get().sample_cmd_1(val) {
-            Ok(value) => diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "Out value for {}: {}", val, value),
-            Err(rc) => diag_log!(log::LmLogger { log::LogSeverity::Error, true } => "Error: {0} - {0:?}", rc),
-        };
-    };
+    let a: u32 = 15;
+    let b: u32 = 21;
 
-    test_command_with_value(2);
-    test_command_with_value(5);
+    let subintf = demosrv.get().open_sub_interface(a, sf::ProcessId::new())?.to::<DemoSubInterface>();
+    let output = subintf.get().sample_cmd_1(b)?;
+
+    diag_log!(log::LmLogger { log::LogSeverity::Trace, false } => "Result: {} times {} = {}", a, b, output);
 
     Ok(())
 }

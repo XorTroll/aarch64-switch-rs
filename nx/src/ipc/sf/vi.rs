@@ -1,8 +1,8 @@
 use crate::result::*;
 use crate::ipc::sf;
-use crate::service;
 use crate::mem;
 use crate::util;
+use crate::ipc::sf::applet;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -36,8 +36,24 @@ pub enum DisplayServiceMode {
     Privileged = 1
 }
 
+pub trait IManagerDisplayService {
+    ipc_interface_define_command!(create_managed_layer: (flags: LayerFlags, display_id: DisplayId, aruid: applet::AppletResourceUserId) => (id: LayerId));
+    ipc_interface_define_command!(destroy_managed_layer: (id: LayerId) => ());
+}
+
+pub trait ISystemDisplayService {
+    ipc_interface_define_command!(get_z_order_count_min: (display_id: DisplayId) => (z: i64));
+    ipc_interface_define_command!(get_z_order_count_max: (display_id: DisplayId) => (z: i64));
+    ipc_interface_define_command!(set_layer_position: (x: f32, y: f32, id: LayerId) => ());
+    ipc_interface_define_command!(set_layer_size: (id: LayerId, width: u64, height: u64) => ());
+    ipc_interface_define_command!(set_layer_z: (id: LayerId, z: i64) => ());
+    ipc_interface_define_command!(set_layer_visibility: (visible: bool, id: LayerId) => ());
+}
+
 pub trait IApplicationDisplayService {
-    ipc_interface_define_command!(get_relay_service: () => (relay_service: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(get_relay_service: () => (relay_service: mem::Shared<dyn sf::IObject>));
+    ipc_interface_define_command!(get_system_display_service: () => (relay_service: mem::Shared<dyn sf::IObject>));
+    ipc_interface_define_command!(get_manager_display_service: () => (relay_service: mem::Shared<dyn sf::IObject>));
     ipc_interface_define_command!(open_display: (name: DisplayName) => (id: DisplayId));
     ipc_interface_define_command!(close_display: (id: DisplayId) => ());
     ipc_interface_define_command!(open_layer: (name: DisplayName, id: LayerId, aruid: sf::ProcessId, out_native_window: sf::OutMapAliasBuffer) => (native_window_size: usize));
@@ -47,5 +63,5 @@ pub trait IApplicationDisplayService {
 }
 
 pub trait IRootService {
-    ipc_interface_define_command!(get_display_service: (mode: DisplayServiceMode) => (display_service: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(get_display_service: (mode: DisplayServiceMode) => (display_service: mem::Shared<dyn sf::IObject>));
 }

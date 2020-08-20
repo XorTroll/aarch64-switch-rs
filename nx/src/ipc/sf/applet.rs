@@ -1,6 +1,5 @@
 use crate::result::*;
 use crate::ipc::sf;
-use crate::service;
 use crate::mem;
 
 pub type AppletResourceUserId = u64;
@@ -64,18 +63,18 @@ pub trait IStorageAccessor {
 }
 
 pub trait IStorage {
-    ipc_interface_define_command!(open: () => (storage_accessor: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(open: () => (storage_accessor: mem::Shared<dyn sf::IObject>));
 }
 
 pub trait ILibraryAppletAccessor {
     ipc_interface_define_command!(get_applet_state_changed_event: () => (applet_state_changed_event: sf::CopyHandle));
     ipc_interface_define_command!(start: () => ());
-    ipc_interface_define_command!(push_in_data: (storage: mem::Shared<dyn service::ISessionObject>) => ());
+    ipc_interface_define_command!(push_in_data: (storage: mem::Shared<dyn sf::IObject>) => ());
 }
 
 pub trait ILibraryAppletCreator {
-    ipc_interface_define_command!(create_library_applet: (applet_id: AppletId, applet_mode: LibraryAppletMode) => (library_applet_accessor: mem::Shared<dyn service::ISessionObject>));
-    ipc_interface_define_command!(create_storage: (size: usize) => (storage: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(create_library_applet: (applet_id: AppletId, applet_mode: LibraryAppletMode) => (library_applet_accessor: mem::Shared<dyn sf::IObject>));
+    ipc_interface_define_command!(create_storage: (size: usize) => (storage: mem::Shared<dyn sf::IObject>));
 }
 
 pub trait IWindowController {
@@ -87,11 +86,11 @@ pub trait ISelfController {
 }
 
 pub trait ILibraryAppletProxy {
-    ipc_interface_define_command!(get_self_controller: () => (self_controller: mem::Shared<dyn service::ISessionObject>));
-    ipc_interface_define_command!(get_window_controller: () => (window_controller: mem::Shared<dyn service::ISessionObject>));
-    ipc_interface_define_command!(get_library_applet_creator: () => (library_applet_creator: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(get_self_controller: () => (self_controller: mem::Shared<dyn sf::IObject>));
+    ipc_interface_define_command!(get_window_controller: () => (window_controller: mem::Shared<dyn sf::IObject>));
+    ipc_interface_define_command!(get_library_applet_creator: () => (library_applet_creator: mem::Shared<dyn sf::IObject>));
 }
 
 pub trait IAllSystemAppletProxiesService {
-    ipc_interface_define_command!(open_library_applet_proxy: (process_id: sf::ProcessId, self_process_handle: sf::CopyHandle, applet_attribute: sf::InMapAliasBuffer) => (library_applet_proxy: mem::Shared<dyn service::ISessionObject>));
+    ipc_interface_define_command!(open_library_applet_proxy: (process_id: sf::ProcessId, self_process_handle: sf::CopyHandle, applet_attribute: sf::InMapAliasBuffer) => (library_applet_proxy: mem::Shared<dyn sf::IObject>));
 }

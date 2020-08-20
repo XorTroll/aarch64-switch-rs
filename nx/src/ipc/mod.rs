@@ -4,7 +4,6 @@ use crate::svc;
 use crate::thread;
 use core::ptr;
 use core::mem;
-use core::fmt;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
@@ -16,25 +15,27 @@ pub enum ControlRequestId {
     CloneCurrentObjectEx = 4
 }
 
+pub type DomainObjectId = u32;
+
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub struct Session {
+pub struct ObjectInfo {
     pub handle: svc::Handle,
-    pub object_id: u32,
+    pub domain_object_id: DomainObjectId,
     pub owns_handle: bool
 }
 
-impl Session {
+impl ObjectInfo {
     pub const fn new() -> Self {
-        Self { handle: 0, object_id: 0, owns_handle: false }
+        Self { handle: 0, domain_object_id: 0, owns_handle: false }
     }
 
     pub const fn from_handle(handle: svc::Handle) -> Self {
-        Self { handle: handle, object_id: 0, owns_handle: true }
+        Self { handle: handle, domain_object_id: 0, owns_handle: true }
     }
 
-    pub const fn from_object_id(parent_handle: svc::Handle, object_id: u32) -> Self {
-        Self { handle: parent_handle, object_id: object_id, owns_handle: false }
+    pub const fn from_domain_object_id(parent_handle: svc::Handle, domain_object_id: DomainObjectId) -> Self {
+        Self { handle: parent_handle, domain_object_id: domain_object_id, owns_handle: false }
     }
 
     pub const fn is_valid(&self) -> bool {
@@ -42,67 +43,15 @@ impl Session {
     }
 
     pub const fn is_domain(&self) -> bool {
-        self.object_id != 0
+        self.domain_object_id != 0
     }
 
-    pub fn convert_current_object_to_domain(&mut self) -> Result<()> {
-        ipc_client_session_send_control_command!([*self; ControlRequestId::ConvertCurrentObjectToDomain; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                object_id: u32 => self.object_id
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(())
+    pub fn convert_current_object_to_domain(&mut self) -> Result<DomainObjectId> {
+        ipc_client_send_control_command!([*self; ControlRequestId::ConvertCurrentObjectToDomain] () => (domain_object_id: DomainObjectId))
     }
 
     pub fn query_pointer_buffer_size(&mut self) -> Result<u16> {
-        let pointer_buf_size: u16;
-        ipc_client_session_send_control_command!([*self; ControlRequestId::QueryPointerBufferSize; false] => {
-            In {};
-            InHandles {};
-            InObjects {};
-            InSessions {};
-            Buffers {};
-            Out {
-                ptr_buf_size: u16 => pointer_buf_size
-            };
-            OutHandles {};
-            OutObjects {};
-            OutSessions {};
-        });
-        Ok(pointer_buf_size)
-    }
-
-    pub fn close(&mut self) {
-        if self.is_valid() {
-            if self.is_domain() {
-                let mut ctx = CommandContext::new(*self);
-                client::write_request_command_on_ipc_buffer(&mut ctx, None, DomainCommandType::Close);
-                let _ = svc::send_sync_request(self.handle);
-            }
-            else if self.owns_handle {
-                let mut ctx = CommandContext::new(*self);
-                client::write_close_command_on_ipc_buffer(&mut ctx);
-                let _ = svc::send_sync_request(self.handle);
-            }
-            if self.owns_handle {
-                let _ = svc::close_handle(self.handle);
-            }
-            *self = Self::new();
-        }
-    }
-}
-
-impl fmt::Debug for Session {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[ handle: {} (owned: {}), object ID: {} ]", self.handle, self.owns_handle, self.object_id)
+        ipc_client_send_control_command!([*self; ControlRequestId::QueryPointerBufferSize] () => (pointer_buffer_size: u16))
     }
 }
 
@@ -152,6 +101,17 @@ impl BufferDescriptor {
             Self { size_low: size_low, address_low: address_low, bits: bits }
         }
     }
+
+    pub const fn get_address(&self) -> *mut u8 {
+        let address_high = read_bits!(2, 23, self.bits);
+        let address_mid = read_bits!(28, 31, self.bits);
+        (self.address_low as usize | ((address_mid as usize) << 32) | ((address_high as usize) << 36)) as *mut u8
+    }
+
+    pub const fn get_size(&self) -> usize {
+        let size_high = read_bits!(24, 27, self.bits);
+        self.size_low as usize | ((size_high as usize) << 32)
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -181,6 +141,16 @@ impl SendStaticDescriptor {
             Self { bits: bits, address_low: address_low }
         }
     }
+
+    pub const fn get_address(&self) -> *mut u8 {
+        let address_high = read_bits!(6, 11, self.bits);
+        let address_mid = read_bits!(12, 15, self.bits);
+        (self.address_low as usize | ((address_mid as usize) << 32) | ((address_high as usize) << 36)) as *mut u8
+    }
+
+    pub const fn get_size(&self) -> usize {
+        read_bits!(16, 31, self.bits) as usize
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -206,6 +176,15 @@ impl ReceiveStaticDescriptor {
 
             Self { address_low: address_low, bits: bits }
         }
+    }
+
+    pub const fn get_address(&self) -> *mut u8 {
+        let address_high = read_bits!(0, 15, self.bits);
+        (self.address_low as usize | ((address_high as usize) << 32)) as *mut u8
+    }
+
+    pub const fn get_size(&self) -> usize {
+        read_bits!(16, 31, self.bits) as usize
     }
 }
 
@@ -381,18 +360,18 @@ pub struct DomainInDataHeader {
     pub command_type: DomainCommandType,
     pub in_object_count: u8,
     pub data_size: u16,
-    pub object_id: u32,
+    pub domain_object_id: DomainObjectId,
     pub pad: u32,
     pub token: u32,
 }
 
 impl DomainInDataHeader {
     pub const fn empty() -> Self {
-        Self { command_type: DomainCommandType::Invalid, in_object_count: 0, data_size: 0, object_id: 0, pad: 0, token: 0 }
+        Self { command_type: DomainCommandType::Invalid, in_object_count: 0, data_size: 0, domain_object_id: 0, pad: 0, token: 0 }
     }
 
-    pub const fn new(command_type: DomainCommandType, in_object_count: u8, data_size: u16, object_id: u32, token: u32) -> Self {
-        Self { command_type: command_type, in_object_count: in_object_count, data_size: data_size, object_id: object_id, pad: 0, token: token }
+    pub const fn new(command_type: DomainCommandType, in_object_count: u8, data_size: u16, domain_object_id: DomainObjectId, token: u32) -> Self {
+        Self { command_type: command_type, in_object_count: in_object_count, data_size: data_size, domain_object_id: domain_object_id, pad: 0, token: token }
     }
 }
 
@@ -430,6 +409,7 @@ bit_enum! {
 
 const MAX_COUNT: usize = 8;
 
+#[derive(Copy, Clone)]
 pub struct DataWalker {
     ptr: *mut u8,
     cur_offset: isize
@@ -502,7 +482,7 @@ pub struct CommandIn {
     copy_handle_count: usize,
     move_handles: [svc::Handle; MAX_COUNT],
     move_handle_count: usize,
-    objects: [u32; MAX_COUNT],
+    objects: [DomainObjectId; MAX_COUNT],
     object_count: usize,
     out_pointer_sizes: [u16; MAX_COUNT],
     out_pointer_size_count: usize,
@@ -534,16 +514,16 @@ impl CommandIn {
         }
     }
 
-    pub fn add_object(&mut self, object_id: u32) {
+    pub fn add_domain_object(&mut self, domain_object_id: DomainObjectId) {
         if self.object_count < MAX_COUNT {
-            self.objects[self.object_count] = object_id;
+            self.objects[self.object_count] = domain_object_id;
             self.object_count += 1;
         }
     }
 
-    pub fn add_session(&mut self, session: Session) {
-        if session.is_domain() {
-            self.add_object(session.object_id);
+    pub fn add_object(&mut self, object_info: ObjectInfo) {
+        if object_info.is_domain() {
+            self.add_domain_object(object_info.domain_object_id);
         }
     }
 
@@ -574,7 +554,7 @@ pub struct CommandOut {
     copy_handle_count: usize,
     move_handles: [svc::Handle; MAX_COUNT],
     move_handle_count: usize,
-    objects: [u32; MAX_COUNT],
+    objects: [DomainObjectId; MAX_COUNT],
     object_count: usize,
 }
 
@@ -607,7 +587,28 @@ impl CommandOut {
         Ok(handle)
     }
 
-    pub fn pop_object(&mut self) -> Result<u32> {
+    pub fn push_copy_handle(&mut self, handle: svc::Handle) -> Result<()> {
+        result_return_if!(self.copy_handle_count >= MAX_COUNT, 0xBABE);
+        self.copy_handles[self.copy_handle_count] = handle;
+        self.copy_handle_count += 1;
+        Ok(())
+    }
+
+    pub fn push_move_handle(&mut self, handle: svc::Handle) -> Result<()> {
+        result_return_if!(self.move_handle_count >= MAX_COUNT, 0xBABE);
+        self.move_handles[self.move_handle_count] = handle;
+        self.move_handle_count += 1;
+        Ok(())
+    }
+
+    pub fn push_handle<const M: HandleMode>(&mut self, handle: sf::Handle<M>) -> Result<()> {
+        match M {
+            HandleMode::Copy => self.push_copy_handle(handle.handle),
+            HandleMode::Move => self.push_move_handle(handle.handle),
+        }
+    }
+
+    pub fn pop_domain_object(&mut self) -> Result<DomainObjectId> {
         if self.object_count > 0 {
             self.object_count -= 1;
             return Ok(self.objects[self.object_count]);
@@ -628,7 +629,7 @@ impl CommandOut {
 
 #[repr(C)]
 pub struct CommandContext {
-    pub session: Session,
+    pub object_info: ObjectInfo,
     pub in_params: CommandIn,
     pub out_params: CommandOut,
     send_statics: [SendStaticDescriptor; MAX_COUNT],
@@ -645,12 +646,12 @@ pub struct CommandContext {
 
 impl CommandContext {
     pub const fn empty() -> Self {
-        Self { session: Session::new(), in_params: CommandIn::empty(), out_params: CommandOut::empty(), send_statics: [SendStaticDescriptor::empty(); MAX_COUNT], send_static_count: 0, receive_statics: [ReceiveStaticDescriptor::empty(); MAX_COUNT], receive_static_count: 0, send_buffers: [BufferDescriptor::empty(); MAX_COUNT], send_buffer_count: 0, receive_buffers: [BufferDescriptor::empty(); MAX_COUNT], receive_buffer_count: 0, exchange_buffers: [BufferDescriptor::empty(); MAX_COUNT], exchange_buffer_count: 0 }
+        Self { object_info: ObjectInfo::new(), in_params: CommandIn::empty(), out_params: CommandOut::empty(), send_statics: [SendStaticDescriptor::empty(); MAX_COUNT], send_static_count: 0, receive_statics: [ReceiveStaticDescriptor::empty(); MAX_COUNT], receive_static_count: 0, send_buffers: [BufferDescriptor::empty(); MAX_COUNT], send_buffer_count: 0, receive_buffers: [BufferDescriptor::empty(); MAX_COUNT], receive_buffer_count: 0, exchange_buffers: [BufferDescriptor::empty(); MAX_COUNT], exchange_buffer_count: 0 }
     }
 
-    pub const fn new(session: Session) -> Self {
+    pub const fn new(object_info: ObjectInfo) -> Self {
         let mut ctx = Self::empty();
-        ctx.session = session;
+        ctx.object_info = object_info;
         ctx
     }
 
@@ -694,7 +695,7 @@ impl CommandContext {
         let is_out = A.contains(BufferAttribute::Out());
 
         if A.contains(BufferAttribute::AutoSelect()) {
-            let pointer_buf_size = self.session.query_pointer_buffer_size()?;
+            let pointer_buf_size = self.object_info.query_pointer_buffer_size()?;
             let buffer_in_static = (pointer_buf_size > 0) && (buffer.size <= pointer_buf_size as usize);
             if is_in {
                 if buffer_in_static {
@@ -753,17 +754,111 @@ impl CommandContext {
         Ok(())
     }
 
-    pub fn pop_session(&mut self) -> Result<Session> {
-        let session: Session;
-        if self.session.is_domain() {
-            let object = self.out_params.pop_object()?;
-            session = Session::from_object_id(self.session.handle, object);
+    pub fn pop_send_static(&mut self) -> Result<SendStaticDescriptor> {
+        result_return_if!(self.send_static_count == 0, 0xBEEF);
+        self.send_static_count -= 1;
+        Ok(self.send_statics[self.send_static_count])
+    }
+
+    pub fn pop_receive_static(&mut self) -> Result<ReceiveStaticDescriptor> {
+        result_return_if!(self.receive_static_count == 0, 0xBEEF);
+        self.receive_static_count -= 1;
+        Ok(self.receive_statics[self.receive_static_count])
+    }
+
+    pub fn pop_send_buffer(&mut self) -> Result<BufferDescriptor> {
+        result_return_if!(self.send_buffer_count == 0, 0xBEEF);
+        self.send_buffer_count -= 1;
+        Ok(self.send_buffers[self.send_buffer_count])
+    }
+
+    pub fn pop_receive_buffer(&mut self) -> Result<BufferDescriptor> {
+        result_return_if!(self.receive_buffer_count == 0, 0xBEEF);
+        self.receive_buffer_count -= 1;
+        Ok(self.receive_buffers[self.receive_buffer_count])
+    }
+
+    pub fn pop_exchange_buffer(&mut self) -> Result<BufferDescriptor> {
+        result_return_if!(self.exchange_buffer_count == 0, 0xBEEF);
+        self.exchange_buffer_count -= 1;
+        Ok(self.exchange_buffers[self.exchange_buffer_count])
+    }
+
+    pub fn pop_buffer<const A: BufferAttribute>(&mut self) -> Result<sf::Buffer<A>> {
+        let is_in = A.contains(BufferAttribute::In());
+        let is_out = A.contains(BufferAttribute::Out());
+
+        if A.contains(BufferAttribute::AutoSelect()) {
+            if is_in {
+                if let Ok(static_desc) = self.pop_send_static() {
+                    if let Ok(send_desc) = self.pop_send_buffer() {
+                        if !static_desc.get_address().is_null() && (static_desc.get_size() > 0) {
+                            return Ok(sf::Buffer::from_mut(static_desc.get_address(), static_desc.get_size()));
+                        }
+                        if !send_desc.get_address().is_null() && (send_desc.get_size() > 0) {
+                            return Ok(sf::Buffer::from_mut(send_desc.get_address(), send_desc.get_size()));
+                        }
+                    }
+                }
+            }
+            else if is_out {
+                if let Ok(static_desc) = self.pop_receive_static() {
+                    if let Ok(recv_desc) = self.pop_receive_buffer() {
+                        if !static_desc.get_address().is_null() && (static_desc.get_size() > 0) {
+                            return Ok(sf::Buffer::from_mut(static_desc.get_address(), static_desc.get_size()));
+                        }
+                        if !recv_desc.get_address().is_null() && (recv_desc.get_size() > 0) {
+                            return Ok(sf::Buffer::from_mut(recv_desc.get_address(), recv_desc.get_size()));
+                        }
+                    }
+                }
+            }
+        }
+        else if A.contains(BufferAttribute::Pointer()) {
+            if is_in {
+                if let Ok(static_desc) = self.pop_send_static() {
+                    return Ok(sf::Buffer::from_mut(static_desc.get_address(), static_desc.get_size()));
+                }
+            }
+            else if is_out {
+                if let Ok(static_desc) = self.pop_receive_static() {
+                    return Ok(sf::Buffer::from_mut(static_desc.get_address(), static_desc.get_size()));
+                }
+            }
+        }
+        else if A.contains(BufferAttribute::MapAlias()) {
+            if is_in && is_out {
+                if let Ok(exch_desc) = self.pop_exchange_buffer() {
+                    return Ok(sf::Buffer::from_mut(exch_desc.get_address(), exch_desc.get_size()));
+                }
+            }
+            else if is_in {
+                if let Ok(send_desc) = self.pop_send_buffer() {
+                    diag_log!(crate::diag::log::LmLogger { crate::diag::log::LogSeverity::Error, true } => "! {} {} {}", send_desc.size_low, send_desc.address_low, send_desc.bits);
+                    return Ok(sf::Buffer::from_mut(send_desc.get_address(), send_desc.get_size()));
+                }
+            }
+            else if is_out {
+                if let Ok(recv_desc) = self.pop_receive_buffer() {
+                    return Ok(sf::Buffer::from_mut(recv_desc.get_address(), recv_desc.get_size()));
+                }
+            }
+        }
+
+        Err(ResultCode::new(0xBABE))
+    }
+
+    pub fn pop_object(&mut self) -> Result<ObjectInfo> {
+        let object_info: ObjectInfo;
+        if self.object_info.is_domain() {
+            let domain_object_id = self.out_params.pop_domain_object()?;
+            object_info = ObjectInfo::from_domain_object_id(self.object_info.handle, domain_object_id);
         }
         else {
-            let handle = self.out_params.pop_handle::<{HandleMode::Move}>()?;
-            session = Session::from_handle(handle.handle);
+            let handle: sf::MoveHandle = self.out_params.pop_handle()?;
+            object_info = ObjectInfo::from_handle(handle.handle);
         }
-        Ok(session)
+        Ok(object_info)
     }
 }
 
