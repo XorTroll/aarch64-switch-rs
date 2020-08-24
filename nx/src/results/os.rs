@@ -6,6 +6,7 @@ result_define_group!(RESULT_MODULE => {
     InvalidHandle: 114,
     Timeout: 117,
     OperationCanceled: 118,
+    SessionClosed: 123,
     UnhandledException: 124,
     FatalException: 128
 });

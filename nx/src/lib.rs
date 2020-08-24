@@ -11,6 +11,8 @@
 #![feature(const_trait_impl)]
 #![feature(specialization)]
 #![feature(coerce_unsized)]
+#![feature(linkage)]
+#![feature(const_in_array_repeat_expressions)]
 #![feature(unsize)]
 #![macro_use]
 
@@ -61,5 +63,7 @@ pub mod input;
 pub mod vmem;
 
 pub mod arm;
+
+pub mod wait;
 
 pub use paste;

@@ -187,9 +187,9 @@ impl<T> Locked<T> {
         Self { lock: Mutex::new(recursive), object: t }
     }
 
-    pub fn get(&mut self) -> &T {
+    pub fn get(&mut self) -> &mut T {
         self.lock.lock();
-        let obj_ref = &self.object;
+        let obj_ref = &mut self.object;
         self.lock.unlock();
         obj_ref
     }

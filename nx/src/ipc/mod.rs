@@ -471,6 +471,7 @@ impl DataWalker {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct CommandIn {
     pub send_process_id: bool,
     pub process_id: u64,
@@ -544,6 +545,7 @@ impl CommandIn {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct CommandOut {
     pub send_process_id: bool,
     pub process_id: u64,
@@ -616,6 +618,13 @@ impl CommandOut {
         Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
+    pub fn push_domain_object(&mut self, domain_object_id: DomainObjectId) -> Result<()> {
+        result_return_if!(self.object_count >= MAX_COUNT, 0xBABE);
+        self.objects[self.object_count] = domain_object_id;
+        self.object_count += 1;
+        Ok(())
+    }
+
     pub fn set_data_at<T: Copy>(&self, offset: usize, t: T) -> Result<()> {
         result_return_if!((offset + mem::size_of::<T>()) as u32 > self.data_size, 0xBE3F);
 
@@ -627,7 +636,7 @@ impl CommandOut {
     }
 }
 
-#[repr(C)]
+#[derive(Copy, Clone)]
 pub struct CommandContext {
     pub object_info: ObjectInfo,
     pub in_params: CommandIn,
@@ -834,7 +843,6 @@ impl CommandContext {
             }
             else if is_in {
                 if let Ok(send_desc) = self.pop_send_buffer() {
-                    diag_log!(crate::diag::log::LmLogger { crate::diag::log::LogSeverity::Error, true } => "! {} {} {}", send_desc.size_low, send_desc.address_low, send_desc.bits);
                     return Ok(sf::Buffer::from_mut(send_desc.get_address(), send_desc.get_size()));
                 }
             }
@@ -900,7 +908,8 @@ pub fn write_array_to_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &[T; M
 #[inline(always)]
 pub const fn get_aligned_data_offset(data_words_offset: *mut u8, base_offset: *mut u8) -> *mut u8 {
     unsafe {
-        let data_offset = (data_words_offset as usize - base_offset as usize + 15) & !15;
+        let align = DATA_PADDING as usize - 1;
+        let data_offset = (data_words_offset as usize - base_offset as usize + align) & !align;
         (data_offset + base_offset as usize) as *mut u8
     }
 }

@@ -1,6 +1,5 @@
 use super::*;
 use crate::svc;
-use crate::ipc;
 use crate::ipc::client;
 use crate::ipc::server;
 use core::mem;
@@ -13,6 +12,14 @@ pub struct Buffer<const A: BufferAttribute> {
 }
 
 impl<const A: BufferAttribute> Buffer<A> {
+    pub const fn new() -> Self {
+        Self { buf: ptr::null_mut(), size: 0 }
+    }
+
+    pub const fn from_other<const B: BufferAttribute>(other: Buffer<B>) -> Self {
+        Self { buf: other.buf, size: other.size }
+    }
+    
     pub const fn from_const<T>(buf: *const T, size: usize) -> Self {
         Self { buf: buf as *const u8, size: size }
     }
@@ -44,6 +51,8 @@ impl<const A: BufferAttribute> Buffer<A> {
 
 pub type InMapAliasBuffer = Buffer<{bit_group!{ BufferAttribute [In, MapAlias] }}>;
 pub type OutMapAliasBuffer = Buffer<{bit_group!{ BufferAttribute [Out, MapAlias] }}>;
+pub type InNonSecureMapAliasBuffer = Buffer<{bit_group!{ BufferAttribute [In, MapAlias, MapTransferAllowsNonSecure] }}>;
+pub type OutNonSecureMapAliasBuffer = Buffer<{bit_group!{ BufferAttribute [Out, MapAlias, MapTransferAllowsNonSecure] }}>;
 pub type InAutoSelectBuffer = Buffer<{bit_group!{ BufferAttribute [In, AutoSelect] }}>;
 pub type OutAutoSelectBuffer = Buffer<{bit_group!{ BufferAttribute [Out, AutoSelect] }}>;
 pub type InPointerBuffer = Buffer<{bit_group!{ BufferAttribute [In, Pointer] }}>;
@@ -104,6 +113,10 @@ impl Session {
         &mut self.object_info
     }
 
+    pub fn set_info(&mut self, info: ObjectInfo) {
+        self.object_info = info;
+    }
+
     pub fn close(&mut self) {
         if self.object_info.is_valid() {
             if self.object_info.is_domain() {
@@ -153,8 +166,12 @@ pub trait IObject {
     fn get_session(&mut self) -> &mut Session;
     fn get_command_table(&self) -> CommandMetadataTable;
 
-    fn get_info(&mut self) -> ipc::ObjectInfo {
+    fn get_info(&mut self) -> ObjectInfo {
         self.get_session().object_info
+    }
+
+    fn set_info(&mut self, info: ObjectInfo) {
+        self.get_session().set_info(info);
     }
 
     fn convert_to_domain(&mut self) -> Result<()> {
@@ -204,3 +221,7 @@ pub mod nv;
 pub mod vi;
 
 pub mod hipc;
+
+pub mod psc;
+
+pub mod pm;

@@ -12,7 +12,7 @@ struct Refcount {
 }
 
 impl Refcount {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { holder: ptr::null_mut() }
     }
     
@@ -68,7 +68,7 @@ impl<T> Shared<T> {
         shared
     }
 
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self { object: ptr::null_mut(), refcount: Refcount::new() }
     }
 }
@@ -99,6 +99,10 @@ impl<T: ?Sized> Shared<T> {
     
     pub fn get(&self) -> &mut T {
         unsafe { &mut *self.object }
+    }
+
+    pub fn reset(&mut self) {
+        self.release();
     }
 
     pub fn copy(&self) -> Self {

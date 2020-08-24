@@ -25,3 +25,11 @@ pub fn get_system_tick_frequency() -> u64 {
         tick_freq
     }
 }
+
+pub const fn ticks_to_nanoseconds(ticks: u64) -> u64 {
+    (ticks * 625) / 12
+}
+
+pub const fn nanoseconds_to_ticks(nanoseconds: u64) -> u64 {
+    (nanoseconds * 12) / 625
+}

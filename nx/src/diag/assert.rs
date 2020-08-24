@@ -30,7 +30,7 @@ pub fn assert(mode: AssertMode, rc: ResultCode) -> ! {
                 }
             },
             AssertMode::SvcBreak => {
-                let _ = svc::break_(svc::BreakReason::Assert, ptr::null_mut(), 0);
+                let _ = svc::break_(svc::BreakReason::Assert, ptr::null_mut(), rc.get_value() as svc::Size);
             },
             AssertMode::Panic => {
                 let res: Result<()> = Err(rc);

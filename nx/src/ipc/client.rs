@@ -82,7 +82,7 @@ pub fn write_request_command_on_ipc_buffer(ctx: &mut CommandContext, request_id:
         }
 
         if ctx.object_info.is_domain() {
-            data_size += (cmem::size_of::<DomainInDataHeader>() + cmem::size_of::<u32>() * ctx.in_params.object_count) as u32;
+            data_size += (cmem::size_of::<DomainInDataHeader>() + cmem::size_of::<DomainObjectId>() * ctx.in_params.object_count) as u32;
         }
 
         data_size = (data_size + 1) & !1;
