@@ -19,6 +19,10 @@ impl ServiceName {
         Self::from(value)
     }
 
+    pub const fn is_empty(&self) -> bool {
+        self.value == 0
+    }
+
     pub const fn empty() -> Self {
         Self::from(0)
     }
@@ -35,9 +39,10 @@ pub struct MitmProcessInfo {
 
 pub trait IUserInterface {
     ipc_interface_define_command!(initialize: (process_id: sf::ProcessId) => ());
-    ipc_interface_define_command!(get_service: (name: ServiceName) => (service_handle: sf::MoveHandle));
+    ipc_interface_define_command!(get_service_handle: (name: ServiceName) => (service_handle: sf::MoveHandle));
     ipc_interface_define_command!(register_service: (name: ServiceName, is_light: bool, max_sessions: i32) => (port_handle: sf::MoveHandle));
-    ipc_interface_define_command!(atmosphere_install_mitm: (name: ServiceName) => (query_handle: sf::MoveHandle, port_handle: sf::MoveHandle));
+    ipc_interface_define_command!(unregister_service: (name: ServiceName) => ());
+    ipc_interface_define_command!(atmosphere_install_mitm: (name: ServiceName) => (port_handle: sf::MoveHandle, query_handle: sf::MoveHandle));
     ipc_interface_define_command!(atmosphere_uninstall_mitm: (name: ServiceName) => ());
     ipc_interface_define_command!(atmosphere_acknowledge_mitm_session: (name: ServiceName) => (info: MitmProcessInfo, session_handle: sf::MoveHandle));
     ipc_interface_define_command!(atmosphere_has_service: (name: ServiceName) => (has: bool));

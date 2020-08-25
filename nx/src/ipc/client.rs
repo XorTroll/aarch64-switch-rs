@@ -10,32 +10,32 @@ pub fn write_command_on_ipc_buffer(ctx: &mut CommandContext, command_type: Comma
     unsafe {
         let mut ipc_buf = get_ipc_buffer();
     
-        let has_special_header = ctx.in_params.send_process_id || ctx.in_params.copy_handle_count > 0 || ctx.in_params.move_handle_count > 0;
+        let has_special_header = ctx.in_params.send_process_id || ctx.in_params.copy_handles.len() > 0 || ctx.in_params.move_handles.len() > 0;
         let data_word_count = (data_size + 3) / 4;
         let command_header = ipc_buf as *mut CommandHeader;
-        *command_header = CommandHeader::new(command_type, ctx.send_static_count as u32, ctx.send_buffer_count as u32, ctx.receive_buffer_count as u32, ctx.exchange_buffer_count as u32, data_word_count, ctx.receive_static_count as u32, has_special_header);
+        *command_header = CommandHeader::new(command_type, ctx.send_statics.len() as u32, ctx.send_buffers.len() as u32, ctx.receive_buffers.len() as u32, ctx.exchange_buffers.len() as u32, data_word_count, ctx.receive_statics.len() as u32, has_special_header);
         ipc_buf = command_header.offset(1) as *mut u8;
 
         if has_special_header {
             let special_header = ipc_buf as *mut CommandSpecialHeader;
-            *special_header = CommandSpecialHeader::new(ctx.in_params.send_process_id, ctx.in_params.copy_handle_count as u32, ctx.in_params.move_handle_count as u32);
+            *special_header = CommandSpecialHeader::new(ctx.in_params.send_process_id, ctx.in_params.copy_handles.len() as u32, ctx.in_params.move_handles.len() as u32);
             ipc_buf = special_header.offset(1) as *mut u8;
 
             if ctx.in_params.send_process_id {
                 ipc_buf = ipc_buf.offset(cmem::size_of::<u64>() as isize);
             }
 
-            ipc_buf = write_array_to_buffer(ipc_buf, ctx.in_params.copy_handle_count as u32, &ctx.in_params.copy_handles);
-            ipc_buf = write_array_to_buffer(ipc_buf, ctx.in_params.move_handle_count as u32, &ctx.in_params.move_handles);
+            ipc_buf = write_array_to_buffer(ipc_buf, ctx.in_params.copy_handles.len() as u32, &ctx.in_params.copy_handles);
+            ipc_buf = write_array_to_buffer(ipc_buf, ctx.in_params.move_handles.len() as u32, &ctx.in_params.move_handles);
         }
 
-        ipc_buf = write_array_to_buffer(ipc_buf, ctx.send_static_count as u32, &ctx.send_statics);
-        ipc_buf = write_array_to_buffer(ipc_buf, ctx.send_buffer_count as u32, &ctx.send_buffers);
-        ipc_buf = write_array_to_buffer(ipc_buf, ctx.receive_buffer_count as u32, &ctx.receive_buffers);
-        ipc_buf = write_array_to_buffer(ipc_buf, ctx.exchange_buffer_count as u32, &ctx.exchange_buffers);
+        ipc_buf = write_array_to_buffer(ipc_buf, ctx.send_statics.len() as u32, &ctx.send_statics);
+        ipc_buf = write_array_to_buffer(ipc_buf, ctx.send_buffers.len() as u32, &ctx.send_buffers);
+        ipc_buf = write_array_to_buffer(ipc_buf, ctx.receive_buffers.len() as u32, &ctx.receive_buffers);
+        ipc_buf = write_array_to_buffer(ipc_buf, ctx.exchange_buffers.len() as u32, &ctx.exchange_buffers);
         ctx.in_params.data_words_offset = ipc_buf;
         ipc_buf = ipc_buf.offset((cmem::size_of::<u32>() * data_word_count as usize) as isize);
-        /* ipc_buf = */ write_array_to_buffer(ipc_buf, ctx.receive_static_count as u32, &ctx.receive_statics);
+        /* ipc_buf = */ write_array_to_buffer(ipc_buf, ctx.receive_statics.len() as u32, &ctx.receive_statics);
     }
 }
 
@@ -61,9 +61,7 @@ pub fn read_command_response_from_ipc_buffer(ctx: &mut CommandContext) {
         }
 
         ipc_buf = read_array_from_buffer(ipc_buf, copy_handle_count, &mut ctx.out_params.copy_handles);
-        ctx.out_params.copy_handle_count = copy_handle_count as usize;
         ipc_buf = read_array_from_buffer(ipc_buf, move_handle_count, &mut ctx.out_params.move_handles);
-        ctx.out_params.move_handle_count = move_handle_count as usize;
 
         ipc_buf = ipc_buf.offset((cmem::size_of::<SendStaticDescriptor>() * (*command_header).get_send_static_count() as usize) as isize);
         ctx.out_params.data_words_offset = ipc_buf;
@@ -82,27 +80,27 @@ pub fn write_request_command_on_ipc_buffer(ctx: &mut CommandContext, request_id:
         }
 
         if ctx.object_info.is_domain() {
-            data_size += (cmem::size_of::<DomainInDataHeader>() + cmem::size_of::<DomainObjectId>() * ctx.in_params.object_count) as u32;
+            data_size += (cmem::size_of::<DomainInDataHeader>() + cmem::size_of::<DomainObjectId>() * ctx.in_params.objects.len()) as u32;
         }
 
         data_size = (data_size + 1) & !1;
         let out_pointer_sizes_offset = data_size;
-        data_size += (cmem::size_of::<u16>() * ctx.in_params.out_pointer_size_count) as u32;
+        data_size += (cmem::size_of::<u16>() * ctx.in_params.out_pointer_sizes.len()) as u32;
 
         write_command_on_ipc_buffer(ctx, CommandType::Request, data_size);
         let mut data_offset = get_aligned_data_offset(ctx.in_params.data_words_offset, ipc_buf);
 
         let out_pointer_sizes = ctx.in_params.data_words_offset.offset(out_pointer_sizes_offset as isize);
-        write_array_to_buffer(out_pointer_sizes, ctx.in_params.out_pointer_size_count as u32, &ctx.in_params.out_pointer_sizes);
+        write_array_to_buffer(out_pointer_sizes, ctx.in_params.out_pointer_sizes.len() as u32, &ctx.in_params.out_pointer_sizes);
 
         let mut data_header = data_offset as *mut DataHeader;
         if ctx.object_info.is_domain() {
             let domain_header = data_offset as *mut DomainInDataHeader;
             let left_data_size = cmem::size_of::<DataHeader>() as u32 + ctx.in_params.data_size;
-            *domain_header = DomainInDataHeader::new(domain_command_type, ctx.in_params.object_count as u8, left_data_size as u16, ctx.object_info.domain_object_id, 0);
+            *domain_header = DomainInDataHeader::new(domain_command_type, ctx.in_params.objects.len() as u8, left_data_size as u16, ctx.object_info.domain_object_id, 0);
             data_offset = data_offset.offset(cmem::size_of::<DomainInDataHeader>() as isize);
             let objects_offset = data_offset.offset(left_data_size as isize);
-            write_array_to_buffer(objects_offset, ctx.in_params.object_count as u32, &ctx.in_params.objects);
+            write_array_to_buffer(objects_offset, ctx.in_params.objects.len() as u32, &ctx.in_params.objects);
             data_header = data_offset as *mut DataHeader;
         }
 
@@ -128,8 +126,7 @@ pub fn read_request_command_response_from_ipc_buffer(ctx: &mut CommandContext) -
             data_offset = data_offset.offset(cmem::size_of::<DomainOutDataHeader>() as isize);
             let objects_offset = data_offset.offset((cmem::size_of::<DataHeader>() + ctx.out_params.data_size as usize) as isize);
             let object_count = (*domain_header).out_object_count;
-            let _ = read_array_from_buffer(objects_offset, object_count, &mut ctx.out_params.objects);
-            ctx.out_params.object_count = object_count as usize;
+            read_array_from_buffer(objects_offset, object_count, &mut ctx.out_params.objects);
             data_header = data_offset as *mut DataHeader;
         }
 
@@ -222,8 +219,7 @@ impl<const A: BufferAttribute> CommandParameter<sf::Buffer<A>> for sf::Buffer<A>
 
 impl<const M: HandleMode> CommandParameter<sf::Handle<M>> for sf::Handle<M> {
     fn before_request_write(handle: &Self, _walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()> {
-        ctx.in_params.add_handle(*handle);
-        Ok(())
+        ctx.in_params.add_handle(*handle)
     }
 
     fn before_send_sync_request(_handle: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
@@ -255,8 +251,7 @@ impl CommandParameter<sf::ProcessId> for sf::ProcessId {
 
 impl CommandParameter<mem::Shared<dyn sf::IObject>> for mem::Shared<dyn sf::IObject> {
     fn before_request_write(session: &Self, _walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()> {
-        ctx.in_params.add_object(session.get().get_info());
-        Ok(())
+        ctx.in_params.add_object(session.get().get_info())
     }
 
     fn before_send_sync_request(_session: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {
@@ -271,8 +266,7 @@ impl CommandParameter<mem::Shared<dyn sf::IObject>> for mem::Shared<dyn sf::IObj
 
 impl<S: service::IClientObject + 'static> CommandParameter<mem::Shared<dyn sf::IObject>> for mem::Shared<S> {
     fn before_request_write(session: &Self, _walker: &mut DataWalker, ctx: &mut CommandContext) -> Result<()> {
-        ctx.in_params.add_object(session.get().get_info());
-        Ok(())
+        ctx.in_params.add_object(session.get().get_info())
     }
 
     fn before_send_sync_request(_session: &Self, _walker: &mut DataWalker, _ctx: &mut CommandContext) -> Result<()> {

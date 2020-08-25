@@ -4,6 +4,7 @@ use crate::svc;
 use crate::thread;
 use core::ptr;
 use core::mem;
+use arrayvec::ArrayVec;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(u32)]
@@ -358,7 +359,7 @@ pub enum DomainCommandType {
 #[repr(C)]
 pub struct DomainInDataHeader {
     pub command_type: DomainCommandType,
-    pub in_object_count: u8,
+    pub object_count: u8,
     pub data_size: u16,
     pub domain_object_id: DomainObjectId,
     pub pad: u32,
@@ -367,11 +368,11 @@ pub struct DomainInDataHeader {
 
 impl DomainInDataHeader {
     pub const fn empty() -> Self {
-        Self { command_type: DomainCommandType::Invalid, in_object_count: 0, data_size: 0, domain_object_id: 0, pad: 0, token: 0 }
+        Self { command_type: DomainCommandType::Invalid, object_count: 0, data_size: 0, domain_object_id: 0, pad: 0, token: 0 }
     }
 
-    pub const fn new(command_type: DomainCommandType, in_object_count: u8, data_size: u16, domain_object_id: DomainObjectId, token: u32) -> Self {
-        Self { command_type: command_type, in_object_count: in_object_count, data_size: data_size, domain_object_id: domain_object_id, pad: 0, token: token }
+    pub const fn new(command_type: DomainCommandType, object_count: u8, data_size: u16, domain_object_id: DomainObjectId, token: u32) -> Self {
+        Self { command_type: command_type, object_count: object_count, data_size: data_size, domain_object_id: domain_object_id, pad: 0, token: token }
     }
 }
 
@@ -471,7 +472,6 @@ impl DataWalker {
     }
 }
 
-#[derive(Copy, Clone)]
 pub struct CommandIn {
     pub send_process_id: bool,
     pub process_id: u64,
@@ -479,106 +479,90 @@ pub struct CommandIn {
     pub data_offset: *mut u8,
     pub data_words_offset: *mut u8,
     pub objects_offset: *mut u8,
-    copy_handles: [svc::Handle; MAX_COUNT],
-    copy_handle_count: usize,
-    move_handles: [svc::Handle; MAX_COUNT],
-    move_handle_count: usize,
-    objects: [DomainObjectId; MAX_COUNT],
-    object_count: usize,
-    out_pointer_sizes: [u16; MAX_COUNT],
-    out_pointer_size_count: usize,
+    copy_handles: ArrayVec<[svc::Handle; MAX_COUNT]>,
+    move_handles: ArrayVec<[svc::Handle; MAX_COUNT]>,
+    objects: ArrayVec<[DomainObjectId; MAX_COUNT]>,
+    out_pointer_sizes: ArrayVec<[u16; MAX_COUNT]>,
 }
 
 impl CommandIn {
-    pub const fn empty() -> Self {
-        Self { send_process_id: false, process_id: 0, data_size: 0, data_offset: ptr::null_mut(), data_words_offset: ptr::null_mut(), objects_offset: ptr::null_mut(), copy_handles: [0; MAX_COUNT], copy_handle_count: 0, move_handles: [0; MAX_COUNT], move_handle_count: 0, objects: [0; MAX_COUNT], object_count: 0, out_pointer_sizes: [0; MAX_COUNT], out_pointer_size_count: 0 }
+    pub fn empty() -> Self {
+        Self { send_process_id: false, process_id: 0, data_size: 0, data_offset: ptr::null_mut(), data_words_offset: ptr::null_mut(), objects_offset: ptr::null_mut(), copy_handles: ArrayVec::new(), move_handles: ArrayVec::new(), objects: ArrayVec::new(), out_pointer_sizes: ArrayVec::new() }
     }
     
-    pub fn add_copy_handle(&mut self, handle: svc::Handle) {
-        if self.copy_handle_count < MAX_COUNT {
-            self.copy_handles[self.copy_handle_count] = handle;
-            self.copy_handle_count += 1;
+    pub fn add_copy_handle(&mut self, handle: svc::Handle) -> Result<()> {
+        match self.copy_handles.try_push(handle) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_move_handle(&mut self, handle: svc::Handle) {
-        if self.move_handle_count < MAX_COUNT {
-            self.move_handles[self.move_handle_count] = handle;
-            self.move_handle_count += 1;
+    pub fn add_move_handle(&mut self, handle: svc::Handle) -> Result<()> {
+        match self.move_handles.try_push(handle) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_handle<const M: HandleMode>(&mut self, handle: sf::Handle<M>) {
+    pub fn add_handle<const M: HandleMode>(&mut self, handle: sf::Handle<M>) -> Result<()> {
         match M {
             HandleMode::Copy => self.add_copy_handle(handle.handle),
-            HandleMode::Move => self.add_move_handle(handle.handle),
+            HandleMode::Move => self.add_move_handle(handle.handle)
         }
     }
 
-    pub fn add_domain_object(&mut self, domain_object_id: DomainObjectId) {
-        if self.object_count < MAX_COUNT {
-            self.objects[self.object_count] = domain_object_id;
-            self.object_count += 1;
+    pub fn add_domain_object(&mut self, domain_object_id: DomainObjectId) -> Result<()> {
+        match self.objects.try_push(domain_object_id) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_object(&mut self, object_info: ObjectInfo) {
+    pub fn add_object(&mut self, object_info: ObjectInfo) -> Result<()> {
         if object_info.is_domain() {
-            self.add_domain_object(object_info.domain_object_id);
+            self.add_domain_object(object_info.domain_object_id)
+        }
+        else {
+            Err(ResultCode::new(0xCCC))
         }
     }
 
-    pub fn add_out_pointer_size(&mut self, pointer_size: u16) {
-        if self.out_pointer_size_count < MAX_COUNT {
-            self.out_pointer_sizes[self.out_pointer_size_count] = pointer_size;
-            self.out_pointer_size_count += 1;
-        }
-    }
-
-    pub fn get_data_at<T: Copy>(&self, offset: usize) -> Result<T> {
-        result_return_if!((offset + mem::size_of::<T>()) as u32 > self.data_size, 0xBE3F);
-
-        unsafe {
-            let ptr = self.data_offset.offset(offset as isize) as *const T;
-            Ok(ptr.read_volatile())
+    pub fn add_out_pointer_size(&mut self, pointer_size: u16) -> Result<()> {
+        match self.out_pointer_sizes.try_push(pointer_size) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 }
 
-#[derive(Copy, Clone)]
 pub struct CommandOut {
     pub send_process_id: bool,
     pub process_id: u64,
     pub data_size: u32,
     pub data_offset: *mut u8,
     pub data_words_offset: *mut u8,
-    copy_handles: [svc::Handle; MAX_COUNT],
-    copy_handle_count: usize,
-    move_handles: [svc::Handle; MAX_COUNT],
-    move_handle_count: usize,
-    objects: [DomainObjectId; MAX_COUNT],
-    object_count: usize,
+    copy_handles: ArrayVec<[svc::Handle; MAX_COUNT]>,
+    move_handles: ArrayVec<[svc::Handle; MAX_COUNT]>,
+    objects: ArrayVec<[DomainObjectId; MAX_COUNT]>
 }
 
 impl CommandOut {
-    pub const fn empty() -> Self {
-        Self { send_process_id: false, process_id: 0, data_size: 0, data_offset: ptr::null_mut(), data_words_offset: ptr::null_mut(), copy_handles: [0; MAX_COUNT], copy_handle_count: 0, move_handles: [0; MAX_COUNT], move_handle_count: 0, objects: [0; MAX_COUNT], object_count: 0 }
+    pub fn empty() -> Self {
+        Self { send_process_id: false, process_id: 0, data_size: 0, data_offset: ptr::null_mut(), data_words_offset: ptr::null_mut(), copy_handles: ArrayVec::new(), move_handles: ArrayVec::new(), objects: ArrayVec::new() }
     }
     
     pub fn pop_copy_handle(&mut self) -> Result<svc::Handle> {
-        if self.copy_handle_count > 0 {
-            self.copy_handle_count -= 1;
-            return Ok(self.copy_handles[self.copy_handle_count]);
+        match self.copy_handles.pop_at(0) {
+            Some(handle) => Ok(handle),
+            None => Err(results::cmif::ResultInvalidOutObjectCount::make())
         }
-        Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
     pub fn pop_move_handle(&mut self) -> Result<svc::Handle> {
-        if self.move_handle_count > 0 {
-            self.move_handle_count -= 1;
-            return Ok(self.move_handles[self.move_handle_count]);
+        match self.move_handles.pop_at(0) {
+            Some(handle) => Ok(handle),
+            None => Err(results::cmif::ResultInvalidOutObjectCount::make())
         }
-        Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
     pub fn pop_handle<const M: HandleMode>(&mut self) -> Result<sf::Handle<M>> {
@@ -590,112 +574,95 @@ impl CommandOut {
     }
 
     pub fn push_copy_handle(&mut self, handle: svc::Handle) -> Result<()> {
-        result_return_if!(self.copy_handle_count >= MAX_COUNT, 0xBABE);
-        self.copy_handles[self.copy_handle_count] = handle;
-        self.copy_handle_count += 1;
-        Ok(())
+        match self.copy_handles.try_push(handle) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
+        }
     }
 
     pub fn push_move_handle(&mut self, handle: svc::Handle) -> Result<()> {
-        result_return_if!(self.move_handle_count >= MAX_COUNT, 0xBABE);
-        self.move_handles[self.move_handle_count] = handle;
-        self.move_handle_count += 1;
-        Ok(())
+        match self.move_handles.try_push(handle) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
+        }
     }
 
     pub fn push_handle<const M: HandleMode>(&mut self, handle: sf::Handle<M>) -> Result<()> {
         match M {
             HandleMode::Copy => self.push_copy_handle(handle.handle),
-            HandleMode::Move => self.push_move_handle(handle.handle),
+            HandleMode::Move => self.push_move_handle(handle.handle)
         }
     }
 
     pub fn pop_domain_object(&mut self) -> Result<DomainObjectId> {
-        if self.object_count > 0 {
-            self.object_count -= 1;
-            return Ok(self.objects[self.object_count]);
+        match self.objects.pop_at(0) {
+            Some(handle) => Ok(handle),
+            None => Err(results::cmif::ResultInvalidOutObjectCount::make())
         }
-        Err(results::cmif::ResultInvalidOutObjectCount::make())
     }
 
     pub fn push_domain_object(&mut self, domain_object_id: DomainObjectId) -> Result<()> {
-        result_return_if!(self.object_count >= MAX_COUNT, 0xBABE);
-        self.objects[self.object_count] = domain_object_id;
-        self.object_count += 1;
-        Ok(())
-    }
-
-    pub fn set_data_at<T: Copy>(&self, offset: usize, t: T) -> Result<()> {
-        result_return_if!((offset + mem::size_of::<T>()) as u32 > self.data_size, 0xBE3F);
-
-        unsafe {
-            let ptr = self.data_offset.offset(offset as isize) as *mut T;
-            *ptr = t;
-            Ok(())
+        match self.objects.try_push(domain_object_id) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 }
 
-#[derive(Copy, Clone)]
 pub struct CommandContext {
     pub object_info: ObjectInfo,
     pub in_params: CommandIn,
     pub out_params: CommandOut,
-    send_statics: [SendStaticDescriptor; MAX_COUNT],
-    send_static_count: usize,
-    receive_statics: [ReceiveStaticDescriptor; MAX_COUNT],
-    receive_static_count: usize,
-    send_buffers: [BufferDescriptor; MAX_COUNT],
-    send_buffer_count: usize,
-    receive_buffers: [BufferDescriptor; MAX_COUNT],
-    receive_buffer_count: usize,
-    exchange_buffers: [BufferDescriptor; MAX_COUNT],
-    exchange_buffer_count: usize
+    send_statics: ArrayVec<[SendStaticDescriptor; MAX_COUNT]>,
+    receive_statics: ArrayVec<[ReceiveStaticDescriptor; MAX_COUNT]>,
+    send_buffers: ArrayVec<[BufferDescriptor; MAX_COUNT]>,
+    receive_buffers: ArrayVec<[BufferDescriptor; MAX_COUNT]>,
+    exchange_buffers: ArrayVec<[BufferDescriptor; MAX_COUNT]>
 }
 
 impl CommandContext {
-    pub const fn empty() -> Self {
-        Self { object_info: ObjectInfo::new(), in_params: CommandIn::empty(), out_params: CommandOut::empty(), send_statics: [SendStaticDescriptor::empty(); MAX_COUNT], send_static_count: 0, receive_statics: [ReceiveStaticDescriptor::empty(); MAX_COUNT], receive_static_count: 0, send_buffers: [BufferDescriptor::empty(); MAX_COUNT], send_buffer_count: 0, receive_buffers: [BufferDescriptor::empty(); MAX_COUNT], receive_buffer_count: 0, exchange_buffers: [BufferDescriptor::empty(); MAX_COUNT], exchange_buffer_count: 0 }
+    pub fn empty() -> Self {
+        Self { object_info: ObjectInfo::new(), in_params: CommandIn::empty(), out_params: CommandOut::empty(), send_statics: ArrayVec::new(), receive_statics: ArrayVec::new(), send_buffers: ArrayVec::new(), receive_buffers: ArrayVec::new(), exchange_buffers: ArrayVec::new() }
     }
 
-    pub const fn new(object_info: ObjectInfo) -> Self {
+    pub fn new(object_info: ObjectInfo) -> Self {
         let mut ctx = Self::empty();
         ctx.object_info = object_info;
         ctx
     }
 
-    pub fn add_send_static(&mut self, send_static: SendStaticDescriptor) {
-        if self.send_static_count < MAX_COUNT {
-            self.send_statics[self.send_static_count] = send_static;
-            self.send_static_count += 1;
+    pub fn add_send_static(&mut self, send_static: SendStaticDescriptor) -> Result<()> {
+        match self.send_statics.try_push(send_static) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_receive_static(&mut self, receive_static: ReceiveStaticDescriptor) {
-        if self.receive_static_count < MAX_COUNT {
-            self.receive_statics[self.receive_static_count] = receive_static;
-            self.receive_static_count += 1;
+    pub fn add_receive_static(&mut self, receive_static: ReceiveStaticDescriptor) -> Result<()> {
+        match self.receive_statics.try_push(receive_static) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_send_buffer(&mut self, send_buffer: BufferDescriptor) {
-        if self.send_buffer_count < MAX_COUNT {
-            self.send_buffers[self.send_buffer_count] = send_buffer;
-            self.send_buffer_count += 1;
+    pub fn add_send_buffer(&mut self, send_buffer: BufferDescriptor) -> Result<()> {
+        match self.send_buffers.try_push(send_buffer) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_receive_buffer(&mut self, receive_buffer: BufferDescriptor) {
-        if self.receive_buffer_count < MAX_COUNT {
-            self.receive_buffers[self.receive_buffer_count] = receive_buffer;
-            self.receive_buffer_count += 1;
+    pub fn add_receive_buffer(&mut self, receive_buffer: BufferDescriptor) -> Result<()> {
+        match self.receive_buffers.try_push(receive_buffer) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
-    pub fn add_exchange_buffer(&mut self, exchange_buffer: BufferDescriptor) {
-        if self.exchange_buffer_count < MAX_COUNT {
-            self.exchange_buffers[self.exchange_buffer_count] = exchange_buffer;
-            self.exchange_buffer_count += 1;
+    pub fn add_exchange_buffer(&mut self, exchange_buffer: BufferDescriptor) -> Result<()> {
+        match self.exchange_buffers.try_push(exchange_buffer) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(ResultCode::new(0xB))
         }
     }
 
@@ -708,35 +675,35 @@ impl CommandContext {
             let buffer_in_static = (pointer_buf_size > 0) && (buffer.size <= pointer_buf_size as usize);
             if is_in {
                 if buffer_in_static {
-                    self.add_send_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal));
-                    self.add_send_static(SendStaticDescriptor::new(buffer.buf, buffer.size, self.send_static_count as u32));
+                    self.add_send_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal))?;
+                    self.add_send_static(SendStaticDescriptor::new(buffer.buf, buffer.size, self.send_statics.len() as u32))?;
                 }
                 else {
-                    self.add_send_buffer(BufferDescriptor::new(buffer.buf, buffer.size, BufferFlags::Normal));
-                    self.add_send_static(SendStaticDescriptor::new(ptr::null(), 0, self.send_static_count as u32));
+                    self.add_send_buffer(BufferDescriptor::new(buffer.buf, buffer.size, BufferFlags::Normal))?;
+                    self.add_send_static(SendStaticDescriptor::new(ptr::null(), 0, self.send_statics.len() as u32))?;
                 }
             }
             else if is_out {
                 if buffer_in_static {
-                    self.add_receive_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal));
-                    self.add_receive_static(ReceiveStaticDescriptor::new(buffer.buf, buffer.size));
-                    self.in_params.add_out_pointer_size(buffer.size as u16);
+                    self.add_receive_buffer(BufferDescriptor::new(ptr::null(), 0, BufferFlags::Normal))?;
+                    self.add_receive_static(ReceiveStaticDescriptor::new(buffer.buf, buffer.size))?;
+                    self.in_params.add_out_pointer_size(buffer.size as u16)?;
                 }
                 else {
-                    self.add_receive_buffer(BufferDescriptor::new(buffer.buf, buffer.size, BufferFlags::Normal));
-                    self.add_receive_static(ReceiveStaticDescriptor::new(ptr::null(), 0));
-                    self.in_params.add_out_pointer_size(0);
+                    self.add_receive_buffer(BufferDescriptor::new(buffer.buf, buffer.size, BufferFlags::Normal))?;
+                    self.add_receive_static(ReceiveStaticDescriptor::new(ptr::null(), 0))?;
+                    self.in_params.add_out_pointer_size(0)?;
                 }
             }
         }
         else if A.contains(BufferAttribute::Pointer()) {
             if is_in {
-                self.add_send_static(SendStaticDescriptor::new(buffer.buf, buffer.size, self.send_static_count as u32));
+                self.add_send_static(SendStaticDescriptor::new(buffer.buf, buffer.size, self.send_statics.len() as u32))?;
             }
             else if is_out {
-                self.add_receive_static(ReceiveStaticDescriptor::new(buffer.buf, buffer.size));
+                self.add_receive_static(ReceiveStaticDescriptor::new(buffer.buf, buffer.size))?;
                 if !A.contains(BufferAttribute::FixedSize()) {
-                    self.in_params.add_out_pointer_size(buffer.size as u16);
+                    self.in_params.add_out_pointer_size(buffer.size as u16)?;
                 }
             }
         }
@@ -750,13 +717,13 @@ impl CommandContext {
             }
             let buf_desc = BufferDescriptor::new(buffer.buf, buffer.size, flags);
             if is_in && is_out {
-                self.add_exchange_buffer(buf_desc);
+                self.add_exchange_buffer(buf_desc)?;
             }
             else if is_in {
-                self.add_send_buffer(buf_desc);
+                self.add_send_buffer(buf_desc)?;
             }
             else if is_out {
-                self.add_receive_buffer(buf_desc);
+                self.add_receive_buffer(buf_desc)?;
             }
         }
 
@@ -764,33 +731,38 @@ impl CommandContext {
     }
 
     pub fn pop_send_static(&mut self) -> Result<SendStaticDescriptor> {
-        result_return_if!(self.send_static_count == 0, 0xBEEF);
-        self.send_static_count -= 1;
-        Ok(self.send_statics[self.send_static_count])
+        match self.send_statics.pop_at(0) {
+            Some(send_static) => Ok(send_static),
+            None => Err(ResultCode::new(0xBB))
+        }
     }
 
     pub fn pop_receive_static(&mut self) -> Result<ReceiveStaticDescriptor> {
-        result_return_if!(self.receive_static_count == 0, 0xBEEF);
-        self.receive_static_count -= 1;
-        Ok(self.receive_statics[self.receive_static_count])
+        match self.receive_statics.pop_at(0) {
+            Some(receive_static) => Ok(receive_static),
+            None => Err(ResultCode::new(0xBB))
+        }
     }
 
     pub fn pop_send_buffer(&mut self) -> Result<BufferDescriptor> {
-        result_return_if!(self.send_buffer_count == 0, 0xBEEF);
-        self.send_buffer_count -= 1;
-        Ok(self.send_buffers[self.send_buffer_count])
+        match self.send_buffers.pop_at(0) {
+            Some(send_buffer) => Ok(send_buffer),
+            None => Err(ResultCode::new(0xBB))
+        }
     }
 
     pub fn pop_receive_buffer(&mut self) -> Result<BufferDescriptor> {
-        result_return_if!(self.receive_buffer_count == 0, 0xBEEF);
-        self.receive_buffer_count -= 1;
-        Ok(self.receive_buffers[self.receive_buffer_count])
+        match self.receive_buffers.pop_at(0) {
+            Some(receive_buffer) => Ok(receive_buffer),
+            None => Err(ResultCode::new(0xBB))
+        }
     }
 
     pub fn pop_exchange_buffer(&mut self) -> Result<BufferDescriptor> {
-        result_return_if!(self.exchange_buffer_count == 0, 0xBEEF);
-        self.exchange_buffer_count -= 1;
-        Ok(self.exchange_buffers[self.exchange_buffer_count])
+        match self.exchange_buffers.pop_at(0) {
+            Some(exchange_buffer) => Ok(exchange_buffer),
+            None => Err(ResultCode::new(0xBB))
+        }
     }
 
     pub fn pop_buffer<const A: BufferAttribute>(&mut self) -> Result<sf::Buffer<A>> {
@@ -878,30 +850,21 @@ pub fn get_ipc_buffer() -> *mut u8 {
 }
 
 #[inline(always)]
-pub fn read_array_from_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &mut [T; MAX_COUNT]) -> *mut u8 {
+pub fn read_array_from_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &mut ArrayVec<[T; MAX_COUNT]>) -> *mut u8 {
     unsafe {
         let tmp_buffer = buffer as *mut T;
-        if (count > 0) && (count as usize <= MAX_COUNT) {
-            for i in 0..count {
-                let cur = tmp_buffer.offset(i as isize);
-                array[i as usize] = *cur;
-            }
-        }
+        array.clear();
+        let _ = array.try_extend_from_slice(core::slice::from_raw_parts(tmp_buffer, count as usize));
         tmp_buffer.offset(count as isize) as *mut u8
     }
 }
 
 #[inline(always)]
-pub fn write_array_to_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &[T; MAX_COUNT]) -> *mut u8 {
+pub fn write_array_to_buffer<T: Copy>(buffer: *mut u8, count: u32, array: &ArrayVec<[T; MAX_COUNT]>) -> *mut u8 {
     unsafe {
-        let temp_buffer = buffer as *mut T;
-        if (count > 0) && (count as usize <= MAX_COUNT) {
-            for i in 0..count {
-                let cur = temp_buffer.offset(i as isize);
-                *cur = array[i as usize];
-            }
-        }
-        temp_buffer.offset(count as isize) as *mut u8
+        let tmp_buffer = buffer as *mut T;
+        core::ptr::copy(array.as_ptr(), tmp_buffer, count as usize);
+        tmp_buffer.offset(count as isize) as *mut u8
     }
 }
 

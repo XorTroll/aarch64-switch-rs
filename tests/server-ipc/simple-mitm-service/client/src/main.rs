@@ -15,6 +15,7 @@ use nx::diag::assert;
 use nx::diag::log;
 use nx::diag::log::Logger;
 use nx::service;
+use nx::ipc::sf;
 
 use core::panic;
 
@@ -27,19 +28,27 @@ pub struct AccountServiceForApplication {
     session: sf::Session
 }
 
-impl service::ISessionObject for AccountServiceForApplication {
-    fn new(session: sf::Session) -> Self {
-        Self { session: session }
-    }
-    
+impl sf::IObject for AccountServiceForApplication {
     fn get_session(&mut self) -> &mut sf::Session {
         &mut self.session
+    }
+    
+    fn get_command_table(&self) -> sf::CommandMetadataTable {
+        ipc_server_make_command_table!(
+            get_user_count: 0
+        )
     }
 }
 
 impl IAccountServiceForApplication for AccountServiceForApplication {
     fn get_user_count(&mut self) -> Result<u32> {
         ipc_client_send_request_command!([self.session.object_info; 0] () => (count: u32))
+    }
+}
+
+impl service::IClientObject for AccountServiceForApplication {
+    fn new(session: sf::Session) -> Self {
+        Self { session: session }
     }
 }
 
