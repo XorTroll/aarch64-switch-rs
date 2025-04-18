@@ -1,6 +1,8 @@
 
 # aarch64-switch-rs
 
+## **IMPORTANT!** this project is no longer continued. For the ongoing work on Rust support for 64-bit Nintendo Switch homebrew, check [here](https://github.com/aarch64-switch-rs).
+
 This repository is the home of some native and cross-platform work regarding Nintendo Switch homebrew:
 
 - **[nx](nx)**: completely native homebrew library made in and for Rust
